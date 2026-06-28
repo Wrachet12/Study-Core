@@ -6,7 +6,7 @@
 <title>Stud Desk — Plan, Time, Note, Learn</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./styles.css">
+<link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
 
@@ -63,6 +63,7 @@
   <button class="tab" data-tab="planner">🗓 Planner</button>
   <button class="tab" data-tab="timer">⏱ Timer</button>
   <button class="tab" data-tab="notes">📓 Notes</button>
+  <button class="tab" data-tab="qlog">❓ Question Log</button>
 </nav>
 
 <main>
@@ -300,13 +301,83 @@
   </div>
 </section>
 
+<!-- ================= QUESTION LOG TAB ================= -->
+<section id="qlog" class="panel">
+  <div class="subtabs">
+    <button class="qsubtab active" data-qsub="qbank">Question Bank</button>
+    <button class="qsubtab" data-qsub="qtests">Practice Tests</button>
+    <button class="qsubtab" data-qsub="qmistakes">Mistake Log</button>
+  </div>
+
+  <div id="qbank" class="qsubpanel card">
+    <h2>Question bank</h2>
+    <p style="font-size:.85rem;color:#555;">5 subjects, up to 200 questions each, split into 4 terms of 50 questions.</p>
+    <div class="subject-tabs" id="qSubjectTabs"></div>
+    <div class="row" style="align-items:flex-end;">
+      <div style="flex:2"><label>Subject name</label><input id="qSubjectName" placeholder="Subject name"></div>
+      <div style="flex:2"><label>Term</label><div class="subject-tabs" id="qTermTabs"></div></div>
+    </div>
+    <div class="tip" id="qCountTip"></div>
+
+    <h3 style="margin-top:18px;">Add / edit a question</h3>
+    <div class="row">
+      <div style="flex:2"><label>Question prompt</label><textarea id="qPrompt" style="min-height:70px;"></textarea></div>
+      <div>
+        <label>Type</label>
+        <select id="qType">
+          <option value="frq">Free response (FRQ)</option>
+          <option value="mcq">Multiple choice (A–D)</option>
+          <option value="tf">True / False</option>
+        </select>
+      </div>
+    </div>
+    <div id="qTypeFields"></div>
+    <div class="row">
+      <div><label>Category</label><input id="qCategory" placeholder="e.g. Algebra, Cell Biology"></div>
+      <div><label>Difficulty (1–10)</label><input id="qDifficulty" type="number" min="1" max="10" value="5"></div>
+      <div><label>Image (optional)</label><input id="qImageInput" type="file" accept="image/*"></div>
+    </div>
+    <div id="qImagePreview"></div>
+    <div class="pillgroup">
+      <button class="btn amber" id="qAddBtn">+ Add question</button>
+      <button class="btn ghost" id="qCancelEditBtn" style="display:none;">Cancel edit</button>
+    </div>
+
+    <h3 style="margin-top:20px;">Questions in this term</h3>
+    <div id="qList"></div>
+  </div>
+
+  <div id="qtests" class="qsubpanel card" style="display:none;">
+    <h2>Practice tests</h2>
+    <p style="font-size:.85rem;color:#555;">Build a test from everything currently in a subject's term, then take it. Name and edit it any time.</p>
+    <div class="row">
+      <div><label>Test name</label><input id="ptName" placeholder="e.g. Midterm review"></div>
+      <div><label>Subject</label><select id="ptSubject"></select></div>
+      <div><label>Term</label>
+        <select id="ptTerm">
+          <option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option><option value="4">Term 4</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn amber" id="ptCreateBtn" style="margin-top:6px;">+ Create practice test</button>
+    <div id="ptList" style="margin-top:16px;"></div>
+    <div id="ptRunner" style="margin-top:16px;"></div>
+  </div>
+
+  <div id="qmistakes" class="qsubpanel card" style="display:none;">
+    <h2>Mistake log</h2>
+    <p style="font-size:.85rem;color:#555;">Auto-filled whenever you miss a question on a practice test. Jot down why, so the same mistake doesn't happen twice.</p>
+    <div id="mistakeList"></div>
+  </div>
+</section>
+
 </main>
 </div><!-- /appShell -->
 
 <div id="toastContainer"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="./config.js"></script>
-<script src="./app.js"></script>
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

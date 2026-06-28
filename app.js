@@ -1,5 +1,5 @@
 /* ===================== AUTH (real accounts via Supabase) ===================== */
-// Fill in your project's URL + anon key in config.js — see below.
+// Fill in your project's URL + anon key in js/config.js — see README.md.
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUserId = null;
@@ -15,7 +15,11 @@ function newUserData(){
     bubbles:[], connections:[], bubbleSeq:0,
     basicNotebooks: newNotebookSet(), formalNotebooks: newNotebookSet(),
     flashcardStacks: [1,2,3,4,5].map(i => ({ name: `Subject ${i}`, cards: [] })), flashcardSeq:0,
-    feynman: { entries: [], countSinceUnlock:0, lockUntilTs:null, draft:{concept:'',explain:'',gaps:'',simplify:''} }
+    feynman: { entries: [], countSinceUnlock:0, lockUntilTs:null, draft:{concept:'',explain:'',gaps:'',simplify:''} },
+    questionLog: {
+      subjects: [1,2,3,4,5].map(i => ({ name: `Subject ${i}`, terms: {1:[],2:[],3:[],4:[]} })),
+      questionSeq:0, practiceTests: [], testSeq:0, mistakes: [], mistakeSeq:0
+    }
   };
 }
 
@@ -196,6 +200,14 @@ document.querySelectorAll('.subtab').forEach(btn=>{
     document.querySelectorAll('.subpanel').forEach(p=>p.style.display='none');
     btn.classList.add('active');
     document.getElementById(btn.dataset.sub).style.display='block';
+  });
+});
+document.querySelectorAll('.qsubtab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.qsubtab').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.qsubpanel').forEach(p=>p.style.display='none');
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.qsub).style.display='block';
   });
 });
 
@@ -807,6 +819,379 @@ function reviewCard(id, correct){
 }
 setInterval(renderBoxes, 30000);
 
+/* ===================== QUESTION LOG ===================== */
+const MAX_QUESTIONS_PER_TERM = 50;
+let qActiveSubject = 0, qActiveTerm = 1, qEditingId = null, qPendingImage = '';
+
+function renderQSubjectTabs(){
+  renderSubjectTabs('qSubjectTabs', data.questionLog.subjects, qActiveSubject, (i)=>{
+    qActiveSubject = i; qActiveTerm = 1; qEditingId=null; resetQuestionForm();
+    renderQSubjectTabs(); renderQTermTabs(); updateQCountTip(); renderQList(); renderPtSubjectSelect();
+  });
+  document.getElementById('qSubjectName').value = data.questionLog.subjects[qActiveSubject].name;
+}
+document.getElementById('qSubjectName').addEventListener('input', (e)=>{
+  data.questionLog.subjects[qActiveSubject].name = e.target.value || `Subject ${qActiveSubject+1}`;
+  renderQSubjectTabs();
+  renderPtSubjectSelect();
+  scheduleSave();
+});
+function renderQTermTabs(){
+  const wrap = document.getElementById('qTermTabs');
+  wrap.innerHTML = [1,2,3,4].map(t=>`<button class="${t===qActiveTerm?'active':''}" data-t="${t}">Term ${t}</button>`).join('');
+  wrap.querySelectorAll('button').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      qActiveTerm = parseInt(b.dataset.t); qEditingId=null; resetQuestionForm();
+      renderQTermTabs(); updateQCountTip(); renderQList();
+    });
+  });
+}
+function updateQCountTip(){
+  const subj = data.questionLog.subjects[qActiveSubject];
+  const termCount = subj.terms[qActiveTerm].length;
+  const totalCount = [1,2,3,4].reduce((s,t)=>s+subj.terms[t].length,0);
+  const tip = document.getElementById('qCountTip');
+  tip.className = 'tip' + (termCount>=MAX_QUESTIONS_PER_TERM ? ' risk' : '');
+  tip.textContent = `${termCount} / ${MAX_QUESTIONS_PER_TERM} questions in Term ${qActiveTerm} · ${totalCount} / 200 total in ${subj.name}`;
+  document.getElementById('qAddBtn').disabled = termCount>=MAX_QUESTIONS_PER_TERM && !qEditingId;
+}
+
+function renderQTypeFields(prefill){
+  const type = document.getElementById('qType').value;
+  const wrap = document.getElementById('qTypeFields');
+  if(type==='mcq'){
+    wrap.innerHTML = `
+      <div class="row">
+        <div><label>Option A</label><input id="qOptA"></div>
+        <div><label>Option B</label><input id="qOptB"></div>
+      </div>
+      <div class="row">
+        <div><label>Option C</label><input id="qOptC"></div>
+        <div><label>Option D</label><input id="qOptD"></div>
+      </div>
+      <label>Correct option</label>
+      <select id="qCorrectMcq"><option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option></select>`;
+    if(prefill){
+      ['A','B','C','D'].forEach((L,i)=>{ document.getElementById('qOpt'+L).value = prefill.options[i]||''; });
+      document.getElementById('qCorrectMcq').value = prefill.answer;
+    }
+  } else if(type==='tf'){
+    wrap.innerHTML = `<label>Correct answer</label><select id="qCorrectTf"><option value="true">True</option><option value="false">False</option></select>`;
+    if(prefill) document.getElementById('qCorrectTf').value = prefill.answer;
+  } else {
+    wrap.innerHTML = `<label>Model / reference answer (for self-checking later)</label><textarea id="qModelAnswer" style="min-height:50px;"></textarea>`;
+    if(prefill) document.getElementById('qModelAnswer').value = prefill.answer || '';
+  }
+}
+document.getElementById('qType').addEventListener('change', ()=>renderQTypeFields());
+
+document.getElementById('qImageInput').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    qPendingImage = reader.result;
+    document.getElementById('qImagePreview').innerHTML = `<img class="qimg-thumb" src="${qPendingImage}"><button class="btn small ghost" id="qRemoveImgBtn" style="margin-top:6px;">Remove image</button>`;
+    document.getElementById('qRemoveImgBtn').addEventListener('click', ()=>{ qPendingImage=''; document.getElementById('qImagePreview').innerHTML=''; document.getElementById('qImageInput').value=''; });
+  };
+  reader.readAsDataURL(file);
+});
+
+function resetQuestionForm(){
+  document.getElementById('qPrompt').value='';
+  document.getElementById('qType').value='frq';
+  document.getElementById('qCategory').value='';
+  document.getElementById('qDifficulty').value='5';
+  document.getElementById('qImageInput').value='';
+  qPendingImage='';
+  document.getElementById('qImagePreview').innerHTML='';
+  renderQTypeFields();
+  document.getElementById('qAddBtn').textContent = '+ Add question';
+  document.getElementById('qCancelEditBtn').style.display='none';
+  qEditingId = null;
+  updateQCountTip();
+}
+document.getElementById('qCancelEditBtn').addEventListener('click', resetQuestionForm);
+
+document.getElementById('qAddBtn').addEventListener('click', ()=>{
+  const prompt = document.getElementById('qPrompt').value.trim();
+  if(!prompt){ showToast('Write the question prompt first.'); return; }
+  const type = document.getElementById('qType').value;
+  const category = document.getElementById('qCategory').value.trim();
+  const difficulty = Math.max(1, Math.min(10, parseInt(document.getElementById('qDifficulty').value)||5));
+  let options=null, answer=null;
+  if(type==='mcq'){
+    options = ['qOptA','qOptB','qOptC','qOptD'].map(id=>document.getElementById(id).value.trim());
+    if(options.some(o=>!o)){ showToast('Fill in all four options.'); return; }
+    answer = parseInt(document.getElementById('qCorrectMcq').value);
+  } else if(type==='tf'){
+    answer = document.getElementById('qCorrectTf').value;
+  } else {
+    answer = document.getElementById('qModelAnswer').value.trim();
+  }
+  const terms = data.questionLog.subjects[qActiveSubject].terms;
+
+  if(qEditingId){
+    const q = terms[qActiveTerm].find(q=>q.id===qEditingId);
+    if(q){ Object.assign(q, {type, prompt, category, difficulty, options, answer, image: qPendingImage}); }
+  } else {
+    if(terms[qActiveTerm].length >= MAX_QUESTIONS_PER_TERM){ showToast(`Term ${qActiveTerm} is full at ${MAX_QUESTIONS_PER_TERM} questions.`); return; }
+    terms[qActiveTerm].push({ id: ++data.questionLog.questionSeq, type, prompt, category, difficulty, options, answer, image: qPendingImage });
+    awardXP(2,false);
+  }
+  resetQuestionForm();
+  renderQList();
+  updateQCountTip();
+  scheduleSave();
+});
+
+function loadQuestionIntoForm(id){
+  const q = data.questionLog.subjects[qActiveSubject].terms[qActiveTerm].find(q=>q.id===id);
+  if(!q) return;
+  qEditingId = id;
+  document.getElementById('qPrompt').value = q.prompt;
+  document.getElementById('qType').value = q.type;
+  document.getElementById('qCategory').value = q.category||'';
+  document.getElementById('qDifficulty').value = q.difficulty;
+  qPendingImage = q.image||'';
+  document.getElementById('qImagePreview').innerHTML = qPendingImage ? `<img class="qimg-thumb" src="${qPendingImage}"><button class="btn small ghost" id="qRemoveImgBtn" style="margin-top:6px;">Remove image</button>` : '';
+  if(qPendingImage) document.getElementById('qRemoveImgBtn').addEventListener('click', ()=>{ qPendingImage=''; document.getElementById('qImagePreview').innerHTML=''; });
+  renderQTypeFields(q);
+  document.getElementById('qAddBtn').textContent = 'Save changes';
+  document.getElementById('qCancelEditBtn').style.display='inline-block';
+  window.scrollTo({top: document.getElementById('qPrompt').offsetTop, behavior:'smooth'});
+}
+function deleteQuestion(id){
+  const terms = data.questionLog.subjects[qActiveSubject].terms;
+  terms[qActiveTerm] = terms[qActiveTerm].filter(q=>q.id!==id);
+  renderQList(); updateQCountTip(); scheduleSave();
+}
+function renderQList(){
+  const list = document.getElementById('qList');
+  const questions = data.questionLog.subjects[qActiveSubject].terms[qActiveTerm];
+  if(questions.length===0){ list.innerHTML = '<p style="color:#888;font-size:.85rem;">No questions yet in this term.</p>'; return; }
+  const typeLabel = {frq:'FRQ', mcq:'Multiple choice', tf:'True/False'};
+  list.innerHTML = questions.map(q=>`
+    <div class="qcard">
+      <div class="qcard-head">
+        <div>
+          <div class="qcard-prompt">${q.prompt.replace(/</g,'&lt;')}</div>
+          <div class="qmeta">
+            <span class="qtype-badge">${typeLabel[q.type]}</span>
+            <span class="qdiff-badge">Difficulty ${q.difficulty}/10</span>
+            ${q.category?`<span class="qcat-badge">${q.category.replace(/</g,'&lt;')}</span>`:''}
+          </div>
+          ${q.image?`<img class="qimg-thumb" src="${q.image}">`:''}
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn small ghost" onclick="loadQuestionIntoForm(${q.id})">Edit</button>
+          <button class="btn small red" onclick="deleteQuestion(${q.id})">Delete</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+/* ---- Practice tests ---- */
+function renderPtSubjectSelect(){
+  const sel = document.getElementById('ptSubject');
+  const prev = sel.value;
+  sel.innerHTML = data.questionLog.subjects.map((s,i)=>`<option value="${i}">${s.name}</option>`).join('');
+  if(prev !== '' && prev < data.questionLog.subjects.length) sel.value = prev;
+}
+document.getElementById('ptCreateBtn').addEventListener('click', ()=>{
+  const subjectIndex = parseInt(document.getElementById('ptSubject').value)||0;
+  const term = parseInt(document.getElementById('ptTerm').value)||1;
+  const subj = data.questionLog.subjects[subjectIndex];
+  const questionIds = subj.terms[term].map(q=>q.id);
+  if(questionIds.length===0){ showToast('That term has no questions yet.'); return; }
+  const name = document.getElementById('ptName').value.trim() || `${subj.name} · Term ${term} test`;
+  data.questionLog.practiceTests.push({ id: ++data.questionLog.testSeq, name, subjectIndex, term, questionIds, createdAt: Date.now() });
+  document.getElementById('ptName').value='';
+  awardXP(3,false);
+  renderPtList();
+  scheduleSave();
+});
+function renderPtList(){
+  const wrap = document.getElementById('ptList');
+  const tests = data.questionLog.practiceTests;
+  if(tests.length===0){ wrap.innerHTML = '<p style="color:#888;font-size:.85rem;">No practice tests yet — create one above.</p>'; return; }
+  wrap.innerHTML = tests.map(t=>{
+    const subj = data.questionLog.subjects[t.subjectIndex];
+    const subjName = subj ? subj.name : '(deleted subject)';
+    return `<div class="pt-card">
+      <div style="flex:1;min-width:200px;">
+        <input value="${t.name.replace(/"/g,'&quot;')}" onchange="renameTest(${t.id}, this.value)">
+        <div style="font-size:.75rem;color:#888;margin-top:4px;">${subjName} · Term ${t.term} · ${t.questionIds.length} question(s)</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn small green" onclick="startPracticeTest(${t.id})">Start</button>
+        <button class="btn small red" onclick="deleteTest(${t.id})">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function renameTest(id, newName){
+  const t = data.questionLog.practiceTests.find(t=>t.id===id);
+  if(t){ t.name = newName.trim() || t.name; scheduleSave(); }
+}
+function deleteTest(id){
+  data.questionLog.practiceTests = data.questionLog.practiceTests.filter(t=>t.id!==id);
+  renderPtList(); scheduleSave();
+}
+
+let ptRunnerState = null;
+function startPracticeTest(id){
+  const test = data.questionLog.practiceTests.find(t=>t.id===id);
+  if(!test) return;
+  const subj = data.questionLog.subjects[test.subjectIndex];
+  const questions = test.questionIds.map(qid=>{
+    for(const t of [1,2,3,4]){ const found = subj.terms[t].find(q=>q.id===qid); if(found) return found; }
+    return null;
+  }).filter(Boolean);
+  if(questions.length===0){ showToast('All questions in this test have been deleted.'); return; }
+  ptRunnerState = { test, subjectName: subj.name, questions, index:0, answers:new Array(questions.length).fill(null), selfChecks:new Array(questions.length).fill(null), stage:'answering' };
+  renderPtRunner();
+}
+function ptSetAnswer(value){ ptRunnerState.answers[ptRunnerState.index] = value; }
+function ptGoTo(i){
+  ptRunnerState.index = Math.max(0, Math.min(ptRunnerState.questions.length-1, i));
+  renderPtRunner();
+}
+function ptFinishAnswering(){
+  ptRunnerState.stage = 'selfcheck';
+  ptRunnerState.selfCheckQueue = ptRunnerState.questions.map((q,i)=>i).filter(i=>ptRunnerState.questions[i].type==='frq');
+  ptRunnerState.selfCheckPointer = 0;
+  renderPtRunner();
+}
+function ptSelfCheck(correct){
+  const i = ptRunnerState.selfCheckQueue[ptRunnerState.selfCheckPointer];
+  ptRunnerState.selfChecks[i] = correct;
+  ptRunnerState.selfCheckPointer++;
+  renderPtRunner();
+}
+function ptComputeResults(){
+  let correctCount = 0;
+  ptRunnerState.questions.forEach((q,i)=>{
+    let isCorrect;
+    if(q.type==='mcq') isCorrect = String(ptRunnerState.answers[i]) === String(q.answer);
+    else if(q.type==='tf') isCorrect = String(ptRunnerState.answers[i]) === String(q.answer);
+    else isCorrect = ptRunnerState.selfChecks[i] === true;
+    if(isCorrect){ correctCount++; return; }
+    const correctDisplay = q.type==='mcq' ? `${['A','B','C','D'][q.answer]}. ${q.options[q.answer]}` : q.type==='tf' ? (q.answer==='true'?'True':'False') : (q.answer || '(no model answer given)');
+    let userDisplay;
+    if(q.type==='mcq') userDisplay = (ptRunnerState.answers[i]!=null) ? `${['A','B','C','D'][ptRunnerState.answers[i]]}. ${q.options[ptRunnerState.answers[i]]}` : '(no answer)';
+    else userDisplay = ptRunnerState.answers[i] || '(no answer)';
+    data.questionLog.mistakes.push({
+      id: ++data.questionLog.mistakeSeq, ts: Date.now(), subjectName: ptRunnerState.subjectName, term: ptRunnerState.test.term,
+      prompt: q.prompt, type: q.type, correctAnswer: correctDisplay, userAnswer: userDisplay, explanation: ''
+    });
+  });
+  ptRunnerState.stage = 'results';
+  ptRunnerState.score = correctCount;
+  awardXP(correctCount*4 + ptRunnerState.questions.length, true);
+  renderMistakeList();
+  scheduleSave();
+}
+function ptExit(){ ptRunnerState = null; renderPtRunner(); }
+function renderPtRunner(){
+  const wrap = document.getElementById('ptRunner');
+  if(!ptRunnerState){ wrap.innerHTML=''; return; }
+  const st = ptRunnerState;
+
+  if(st.stage === 'answering'){
+    const q = st.questions[st.index];
+    let inputHtml = '';
+    if(q.type==='mcq'){
+      inputHtml = q.options.map((opt,i)=>`
+        <label class="mcq-opt"><input type="radio" name="ptopt" value="${i}" ${st.answers[st.index]===i?'checked':''} onchange="ptSetAnswer(${i})"> ${['A','B','C','D'][i]}. ${opt.replace(/</g,'&lt;')}</label>`).join('');
+    } else if(q.type==='tf'){
+      inputHtml = `
+        <label class="mcq-opt"><input type="radio" name="ptopt" value="true" ${st.answers[st.index]==='true'?'checked':''} onchange="ptSetAnswer('true')"> True</label>
+        <label class="mcq-opt"><input type="radio" name="ptopt" value="false" ${st.answers[st.index]==='false'?'checked':''} onchange="ptSetAnswer('false')"> False</label>`;
+    } else {
+      inputHtml = `<textarea style="min-height:90px;" oninput="ptSetAnswer(this.value)">${st.answers[st.index]||''}</textarea>`;
+    }
+    const isLast = st.index === st.questions.length-1;
+    wrap.innerHTML = `
+      <div class="test-card">
+        <div class="test-progress">Question ${st.index+1} of ${st.questions.length} — ${st.test.name}</div>
+        <div class="qcard-prompt">${q.prompt.replace(/</g,'&lt;')}</div>
+        ${q.image?`<img class="test-q-img" src="${q.image}">`:''}
+        <div style="margin-top:12px;">${inputHtml}</div>
+        <div class="test-nav">
+          <button class="btn small ghost" onclick="ptGoTo(${st.index-1})" ${st.index===0?'disabled':''}>‹ Prev</button>
+          <button class="btn small red" onclick="ptExit()">Exit test</button>
+          ${isLast ? `<button class="btn small amber" onclick="ptFinishAnswering()">Review &amp; finish</button>` : `<button class="btn small blue" onclick="ptGoTo(${st.index+1})">Next ›</button>`}
+        </div>
+      </div>`;
+  } else if(st.stage === 'selfcheck'){
+    if(st.selfCheckPointer >= st.selfCheckQueue.length){ ptComputeResults(); renderPtRunner(); return; }
+    const i = st.selfCheckQueue[st.selfCheckPointer];
+    const q = st.questions[i];
+    wrap.innerHTML = `
+      <div class="test-card">
+        <div class="test-progress">Self-check ${st.selfCheckPointer+1} of ${st.selfCheckQueue.length} free-response question(s)</div>
+        <div class="qcard-prompt">${q.prompt.replace(/</g,'&lt;')}</div>
+        ${q.image?`<img class="test-q-img" src="${q.image}">`:''}
+        <div class="answer-compare" style="margin-top:10px;">
+          <div><strong>You wrote:</strong><br>${(st.answers[i]||'(no answer)').replace(/</g,'&lt;')}</div>
+          <div><strong>Model answer:</strong><br>${(q.answer||'(none provided)').replace(/</g,'&lt;')}</div>
+        </div>
+        <div class="pillgroup">
+          <button class="btn small green" onclick="ptSelfCheck(true)">I got this right</button>
+          <button class="btn small red" onclick="ptSelfCheck(false)">I got this wrong</button>
+        </div>
+      </div>`;
+  } else if(st.stage === 'results'){
+    wrap.innerHTML = `
+      <div class="test-card">
+        <h3>Results: ${st.score} / ${st.questions.length} correct</h3>
+        <p style="font-size:.85rem;color:#666;">Anything you missed just got logged in the Mistake Log tab — add an explanation there while it's fresh.</p>
+        <button class="btn amber" onclick="ptExit()">Done</button>
+      </div>`;
+  }
+}
+
+/* ---- Mistake log ---- */
+function renderMistakeList(){
+  const wrap = document.getElementById('mistakeList');
+  const mistakes = data.questionLog.mistakes.slice().sort((a,b)=>b.ts-a.ts);
+  if(mistakes.length===0){ wrap.innerHTML = '<p style="color:#888;font-size:.85rem;">No mistakes logged yet — they\'ll show up here after a practice test.</p>'; return; }
+  wrap.innerHTML = mistakes.map(m=>`
+    <div class="mistake-card">
+      <div class="qcard-prompt">${m.prompt.replace(/</g,'&lt;')}</div>
+      <div class="qmeta"><span class="qtype-badge">${m.subjectName} · Term ${m.term}</span></div>
+      <div class="answer-compare">
+        <div class="wrong-ans">Your answer: ${m.userAnswer.replace(/</g,'&lt;')}</div>
+        <div class="right-ans">Correct answer: ${m.correctAnswer.replace(/</g,'&lt;')}</div>
+      </div>
+      <label style="margin-top:4px;">Why did I miss this?</label>
+      <textarea style="min-height:60px;" oninput="updateMistakeExplanation(${m.id}, this.value)">${m.explanation||''}</textarea>
+      <button class="btn small red" style="margin-top:6px;" onclick="deleteMistake(${m.id})">Delete</button>
+    </div>`).join('');
+}
+function updateMistakeExplanation(id, val){
+  const m = data.questionLog.mistakes.find(m=>m.id===id);
+  if(m){ m.explanation = val; scheduleSave(); }
+}
+function deleteMistake(id){
+  data.questionLog.mistakes = data.questionLog.mistakes.filter(m=>m.id!==id);
+  renderMistakeList(); scheduleSave();
+}
+
+function renderQuestionLog(){
+  renderQSubjectTabs();
+  renderQTermTabs();
+  updateQCountTip();
+  renderQTypeFields();
+  renderQList();
+  renderPtSubjectSelect();
+  renderPtList();
+  renderMistakeList();
+  ptRunnerState = null;
+  document.getElementById('ptRunner').innerHTML='';
+}
+
 /* ===================== FULL RENDER ON LOGIN ===================== */
 function renderAll(){
   renderStats();
@@ -818,5 +1203,6 @@ function renderAll(){
   renderFlashAll();
   loadFeynmanDraft();
   renderFeynmanStatus();
+  renderQuestionLog();
   buildSchedule();
 }

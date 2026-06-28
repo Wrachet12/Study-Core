@@ -8,5 +8,5 @@
 // designed for it, and Row Level Security (set up in sql/setup.sql) is what
 // actually keeps each user's data private.
 
-const SUPABASE_URL = "https://bdzexyqnilqfqnvcjkwg.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable__Qz9cqPHtQ7oOUw5zZXdBw_8-kWL3dX";
+const SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR-ANON-PUBLIC-KEY";

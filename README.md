@@ -18,7 +18,7 @@ stud-desk-project/
 │   ├── config.js      Your Supabase project credentials (you fill this in)
 │   └── app.js          All app logic
 ├── sql/
-│   └── setup.sql       Database schema + security rules, run once in Superbness
+│   └── setup.sql       Database schema + security rules, run once in Supabase
 └── README.md           This file
 ```
 
@@ -51,7 +51,7 @@ stays a plain static site you host normally.
    **Project URL** and the **anon / public key**.
 
 4. **Paste them into `js/config.js`:**
-   ```is
+   ```js
    const SUPABASE_URL = "https://your-project-ref.supabase.co";
    const SUPABASE_ANON_KEY = "your-long-anon-key";
    ```
