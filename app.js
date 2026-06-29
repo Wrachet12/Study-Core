@@ -50,18 +50,24 @@ document.getElementById('signupForm').addEventListener('submit', async (e)=>{
   if(pw!==confirm){ errEl.textContent="Passwords don't match."; return; }
   errEl.textContent='';
   submitBtn.disabled = true; submitBtn.textContent = 'Creating account…';
-  const { data: signUpData, error } = await sb.auth.signUp({
-    email, password: pw, options: { data: { name: name || email.split('@')[0] } }
-  });
-  submitBtn.disabled = false; submitBtn.textContent = 'Create account';
-  if(error){ errEl.textContent = error.message; return; }
-  if(!signUpData.session){
-    // Project has email confirmation turned on — no session yet.
-    showToast('Account created. Check your email to confirm, then log in.');
-    switchAuthTab('login');
-    return;
+  try{
+    const { data: signUpData, error } = await sb.auth.signUp({
+      email, password: pw, options: { data: { name: name || email.split('@')[0] } }
+    });
+    if(error){ errEl.textContent = error.message; return; }
+    if(!signUpData.session){
+      // Project has email confirmation turned on — no session yet.
+      showToast('Account created. Check your email to confirm, then log in.');
+      switchAuthTab('login');
+      return;
+    }
+    await loadProfileAndEnter(signUpData.user.id, signUpData.user.email);
+  }catch(err){
+    console.error('Signup request failed:', err);
+    errEl.textContent = "Couldn't reach the server — check that SUPABASE_URL/SUPABASE_ANON_KEY in config.js are correct, and that you're online.";
+  }finally{
+    submitBtn.disabled = false; submitBtn.textContent = 'Create account';
   }
-  await loadProfileAndEnter(signUpData.user.id, signUpData.user.email);
 });
 
 document.getElementById('loginForm').addEventListener('submit', async (e)=>{
@@ -72,10 +78,16 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   const errEl = document.getElementById('loginError');
   errEl.textContent='';
   submitBtn.disabled = true; submitBtn.textContent = 'Logging in…';
-  const { data: signInData, error } = await sb.auth.signInWithPassword({ email, password: pw });
-  submitBtn.disabled = false; submitBtn.textContent = 'Log in';
-  if(error){ errEl.textContent = error.message; return; }
-  await loadProfileAndEnter(signInData.user.id, signInData.user.email);
+  try{
+    const { data: signInData, error } = await sb.auth.signInWithPassword({ email, password: pw });
+    if(error){ errEl.textContent = error.message; return; }
+    await loadProfileAndEnter(signInData.user.id, signInData.user.email);
+  }catch(err){
+    console.error('Login request failed:', err);
+    errEl.textContent = "Couldn't reach the server — check that SUPABASE_URL/SUPABASE_ANON_KEY in config.js are correct, and that you're online.";
+  }finally{
+    submitBtn.disabled = false; submitBtn.textContent = 'Log in';
+  }
 });
 
 async function loadProfileAndEnter(userId, email){
