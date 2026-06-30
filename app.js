@@ -19,7 +19,8 @@ function newUserData(){
     questionLog: {
       subjects: [1,2,3,4,5].map(i => ({ name: `Subject ${i}`, terms: {1:[],2:[],3:[],4:[]} })),
       questionSeq:0, practiceTests: [], testSeq:0, mistakes: [], mistakeSeq:0
-    }
+    },
+    friends: [], friendRequests: [], darkMode: false, displayName: ''
   };
 }
 
@@ -599,8 +600,9 @@ function renderFlashViewer(){
   const card = stack.cards[flashActiveCard];
   const showing = flashFlipped ? card.back : card.front;
   const label = flashFlipped ? 'Answer' : 'Question';
+  const catBadge = card.category ? `<span style="position:absolute;top:8px;right:14px;font-size:.65rem;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:10px;background:#E3EEF8;color:#1c4a66;">${card.category.replace(/</g,'&lt;')}</span>` : '';
   wrap.innerHTML = `
-    <div class="flip-card" id="flipCardEl"><span class="side-label">${label}</span>${showing.replace(/</g,'&lt;') || '(blank)'}</div>
+    <div class="flip-card" id="flipCardEl"><span class="side-label">${label}</span>${catBadge}${showing.replace(/</g,'&lt;') || '(blank)'}</div>
     <div class="flash-nav">
       <button class="btn small ghost" id="flashPrevBtn">‹ Prev</button>
       <button class="btn small blue" id="flashFlipBtn">Flip</button>
@@ -626,14 +628,43 @@ document.getElementById('flashStackName').addEventListener('input', (e)=>{
   renderSubjectTabs('flashStackTabs', data.flashcardStacks, flashActiveStack, (i)=>{ flashActiveStack=i; flashActiveCard=0; flashFlipped=false; renderFlashAll(); });
   scheduleSave();
 });
+document.getElementById('flashShareBtn').addEventListener('click', ()=>{
+  const stack = data.flashcardStacks[flashActiveStack];
+  const payload = { name: stack.name, cards: stack.cards };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  document.getElementById('shareCode').textContent = encoded;
+  document.getElementById('shareModal').style.display='flex';
+});
+document.getElementById('closeShareModal').addEventListener('click', ()=>{ document.getElementById('shareModal').style.display='none'; });
+document.getElementById('copyShareCodeBtn').addEventListener('click', ()=>{
+  navigator.clipboard.writeText(document.getElementById('shareCode').textContent).then(()=>showToast('Code copied!'));
+});
+document.getElementById('importStackBtn').addEventListener('click', ()=>{
+  try{
+    const code = document.getElementById('importCodeInput').value.trim();
+    const payload = JSON.parse(decodeURIComponent(escape(atob(code))));
+    if(!payload.cards || !Array.isArray(payload.cards)) throw new Error('Invalid code');
+    const emptyStack = data.flashcardStacks.findIndex(s=>s.cards.length===0);
+    const target = emptyStack>-1 ? emptyStack : 0;
+    data.flashcardStacks[target].name = payload.name || 'Imported';
+    data.flashcardStacks[target].cards = payload.cards.map(c=>({...c, id:data.flashcardSeq++}));
+    flashActiveStack = target; flashActiveCard=0; flashFlipped=false;
+    renderFlashAll();
+    scheduleSave();
+    showToast(`Imported "${payload.name}" into Stack ${target+1}.`);
+    document.getElementById('importCodeInput').value='';
+    document.getElementById('shareModal').style.display='none';
+  }catch(e){ showToast('Invalid share code — check and try again.'); }
+});
 document.getElementById('flashAddBtn').addEventListener('click', ()=>{
   const stack = data.flashcardStacks[flashActiveStack];
   if(stack.cards.length >= 150){ showToast('This stack is full at 150 cards — try another stack.'); return; }
   const front = document.getElementById('flashFront').value.trim();
   const back = document.getElementById('flashBack').value.trim();
+  const category = document.getElementById('flashCategory').value.trim();
   if(!front || !back){ showToast('Fill in both the front and back of the card.'); return; }
-  stack.cards.push({ id: data.flashcardSeq++, front, back });
-  document.getElementById('flashFront').value=''; document.getElementById('flashBack').value='';
+  stack.cards.push({ id: data.flashcardSeq++, front, back, category });
+  document.getElementById('flashFront').value=''; document.getElementById('flashBack').value=''; document.getElementById('flashCategory').value='';
   flashActiveCard = stack.cards.length-1; flashFlipped=false;
   renderFlashCount(); renderFlashViewer();
   awardXP(2,false);
@@ -1023,25 +1054,6 @@ document.getElementById('ptCreateBtn').addEventListener('click', ()=>{
   renderPtList();
   scheduleSave();
 });
-function renderPtList(){
-  const wrap = document.getElementById('ptList');
-  const tests = data.questionLog.practiceTests;
-  if(tests.length===0){ wrap.innerHTML = '<p style="color:#888;font-size:.85rem;">No practice tests yet — create one above.</p>'; return; }
-  wrap.innerHTML = tests.map(t=>{
-    const subj = data.questionLog.subjects[t.subjectIndex];
-    const subjName = subj ? subj.name : '(deleted subject)';
-    return `<div class="pt-card">
-      <div style="flex:1;min-width:200px;">
-        <input value="${t.name.replace(/"/g,'&quot;')}" onchange="renameTest(${t.id}, this.value)">
-        <div style="font-size:.75rem;color:#888;margin-top:4px;">${subjName} · Term ${t.term} · ${t.questionIds.length} question(s)</div>
-      </div>
-      <div style="display:flex;gap:6px;">
-        <button class="btn small green" onclick="startPracticeTest(${t.id})">Start</button>
-        <button class="btn small red" onclick="deleteTest(${t.id})">Delete</button>
-      </div>
-    </div>`;
-  }).join('');
-}
 function renameTest(id, newName){
   const t = data.questionLog.practiceTests.find(t=>t.id===id);
   if(t){ t.name = newName.trim() || t.name; scheduleSave(); }
@@ -1164,49 +1176,394 @@ function renderPtRunner(){
   }
 }
 
-/* ---- Mistake log ---- */
+
+/* ===================== ACCOUNT SETTINGS + DARK MODE ===================== */
+function applyDarkMode(on){
+  document.body.classList.toggle('dark-mode', on);
+  const toggle = document.getElementById('darkModeToggle');
+  if(toggle) toggle.checked = on;
+}
+document.getElementById('accountBtn').addEventListener('click', ()=>{
+  document.getElementById('settingsName').value = data.displayName || document.getElementById('userName').textContent;
+  document.getElementById('darkModeToggle').checked = data.darkMode || false;
+  document.getElementById('accountModal').style.display='flex';
+});
+document.getElementById('closeSettingsBtn').addEventListener('click', ()=>{ document.getElementById('accountModal').style.display='none'; });
+document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
+  const newName = document.getElementById('settingsName').value.trim();
+  const dark = document.getElementById('darkModeToggle').checked;
+  if(newName){ data.displayName = newName; document.getElementById('userName').textContent = newName; }
+  data.darkMode = dark;
+  applyDarkMode(dark);
+  // also save the name back to the profiles table
+  if(newName && currentUserId){
+    try{ await sb.from('profiles').update({ name: newName }).eq('id', currentUserId); }catch(e){}
+  }
+  scheduleSave();
+  document.getElementById('accountModal').style.display='none';
+  showToast('Settings saved.');
+});
+
+/* ===================== SEARCH BAR ===================== */
+const searchInput = document.getElementById('globalSearch');
+const searchDropdown = document.getElementById('searchResults');
+searchInput.addEventListener('input', ()=>{
+  const q = searchInput.value.trim().toLowerCase();
+  if(q.length < 2){ searchDropdown.classList.remove('open'); return; }
+  const results = [];
+  // basic notebook pages
+  data.basicNotebooks.forEach(nb=>{
+    Object.entries(nb.pages).forEach(([pg, text])=>{
+      if(text && text.toLowerCase().includes(q))
+        results.push({type:'Basic note', label:`${nb.name} · p.${pg}`, preview: text.slice(0,60), action:()=>{}});
+    });
+  });
+  // flashcards
+  data.flashcardStacks.forEach(st=>{
+    st.cards.forEach(c=>{
+      if(c.front.toLowerCase().includes(q)||c.back.toLowerCase().includes(q))
+        results.push({type:'Flashcard', label:`${st.name}: ${c.front.slice(0,40)}`, preview:c.back.slice(0,50), action:()=>{}});
+    });
+  });
+  // questions
+  data.questionLog.subjects.forEach(s=>{
+    [1,2,3,4].forEach(t=>{
+      s.terms[t].forEach(q2=>{
+        if(q2.prompt.toLowerCase().includes(q))
+          results.push({type:'Question', label:`${s.name} T${t}: ${q2.prompt.slice(0,50)}`, preview:`Difficulty ${q2.difficulty}`, action:()=>{}});
+      });
+    });
+  });
+  if(results.length===0){
+    searchDropdown.innerHTML='<div class="search-result" style="color:#aaa;">No results</div>';
+  } else {
+    searchDropdown.innerHTML = results.slice(0,12).map((r,i)=>`
+      <div class="search-result" data-i="${i}">
+        <span class="sr-type">${r.type}</span><br>${r.label.replace(/</g,'&lt;')}
+        <div style="color:#999;font-size:.72rem;margin-top:2px;">${r.preview.replace(/</g,'&lt;')}</div>
+      </div>`).join('');
+  }
+  searchDropdown.classList.add('open');
+});
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest('.topbar-center')) searchDropdown.classList.remove('open');
+});
+
+/* ===================== TODAY / HOME SCREEN ===================== */
+function renderHome(){
+  const now = new Date();
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('todayGreeting').textContent = `Good ${now.getHours()<12?'morning':now.getHours()<17?'afternoon':'evening'}, ${data.displayName || document.getElementById('userName').textContent} 👋`;
+  document.getElementById('todayDate').textContent = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+
+  // Due today / urgent
+  const today = todayStr();
+  const urgentTasks = data.tasks.filter(t=> t.effectiveDue <= today);
+  const homeTasks = document.getElementById('homeTasks');
+  homeTasks.innerHTML = urgentTasks.length ? urgentTasks.map(t=>`<div class="home-item">📌 ${t.title.replace(/</g,'&lt;')} <span style="color:var(--red);font-size:.72rem;">due ${t.effectiveDue}</span></div>`).join('') : '<div class="home-empty">Nothing urgent today!</div>';
+
+  // Leitner cards ready
+  const readyCards = [];
+  for(let b=1;b<=5;b++) data.leitner[b].forEach(c=>{ if(Date.now()>=c.nextReviewTs) readyCards.push(c); });
+  document.getElementById('homeLeitner').innerHTML = readyCards.length ? readyCards.slice(0,5).map(c=>`<div class="home-item">🃏 ${c.text.replace(/</g,'&lt;')}</div>`).join('') + (readyCards.length>5?`<div class="home-empty">+${readyCards.length-5} more</div>`:'') : '<div class="home-empty">All caught up!</div>';
+
+  // Upcoming 7 days
+  const upcoming = data.tasks.filter(t=>{ const d=daysBetween(today, t.effectiveDue); return d>0 && d<=7; }).sort((a,b)=>a.effectiveDue.localeCompare(b.effectiveDue));
+  document.getElementById('homeUpcoming').innerHTML = upcoming.length ? upcoming.map(t=>`<div class="home-item">📋 ${t.title.replace(/</g,'&lt;')} <span style="color:#888;font-size:.72rem;">${t.effectiveDue}</span></div>`).join('') : '<div class="home-empty">Nothing due in 7 days.</div>';
+
+  // Weak spots from mistakes
+  const catCounts = {};
+  data.questionLog.mistakes.forEach(m=>{ if(m.subjectName) catCounts[m.subjectName]=(catCounts[m.subjectName]||0)+1; });
+  const sorted = Object.entries(catCounts).sort((a,b)=>b[1]-a[1]);
+  document.getElementById('homeWeakness').innerHTML = sorted.length ? sorted.slice(0,4).map(([cat,ct])=>`<div class="home-item">⚠️ ${cat.replace(/</g,'&lt;')} <span style="color:var(--red);font-size:.72rem;">${ct} mistake(s)</span></div>`).join('') : '<div class="home-empty">No mistakes logged yet.</div>';
+
+  // Stats
+  document.getElementById('homeStats').innerHTML = `
+    <div class="home-item">🔥 Streak: <strong>${data.streak} day(s)</strong></div>
+    <div class="home-item">⭐ Level ${data.level} · <strong>${data.xp} XP</strong></div>
+    <div class="home-item" style="font-size:.75rem;color:#999;">${100-(data.xp%100)} XP to next level</div>`;
+
+  // Unreviewed mistakes (no explanation yet)
+  const unreviewed = data.questionLog.mistakes.filter(m=>!m.explanation || m.explanation.trim()==='');
+  document.getElementById('homeMistakes').innerHTML = unreviewed.length ? unreviewed.slice(0,4).map(m=>`<div class="home-item">❌ ${m.prompt.slice(0,50).replace(/</g,'&lt;')}</div>`).join('')+(unreviewed.length>4?`<div class="home-empty">+${unreviewed.length-4} more</div>`:'') : '<div class="home-empty">All mistakes reviewed!</div>';
+}
+
+/* ===================== FRIENDS / LEADERBOARD (browser-local) ===================== */
+// Friends are stored in the Supabase profiles table by display name lookup.
+// For the leaderboard, we show globally using the profiles table and locally for friends.
+let lbMode = 'friends';
+document.getElementById('lbFriendsBtn').addEventListener('click', ()=>{ lbMode='friends'; document.getElementById('lbFriendsBtn').classList.add('active'); document.getElementById('lbGlobalBtn').classList.remove('active'); renderLeaderboard(); });
+document.getElementById('lbGlobalBtn').addEventListener('click', ()=>{ lbMode='global'; document.getElementById('lbGlobalBtn').classList.add('active'); document.getElementById('lbFriendsBtn').classList.remove('active'); renderLeaderboard(); });
+
+document.getElementById('friendAddBtn').addEventListener('click', async ()=>{
+  const name = document.getElementById('friendInput').value.trim();
+  if(!name){ showToast('Enter a display name.'); return; }
+  // look up by name in profiles
+  try{
+    const { data: profiles } = await sb.from('profiles').select('id,name,app_data').ilike('name', name);
+    if(!profiles || profiles.length===0){ showToast('No user found with that display name.'); return; }
+    const target = profiles[0];
+    if(target.id === currentUserId){ showToast("That's you!"); return; }
+    if(data.friends.includes(target.id)){ showToast('Already friends.'); return; }
+    // push a friend request into their profile's app_data
+    const theirData = Object.assign(newUserData(), target.app_data||{});
+    if(!theirData.friendRequests) theirData.friendRequests=[];
+    if(theirData.friendRequests.some(r=>r.from===currentUserId)){ showToast('Request already sent.'); return; }
+    theirData.friendRequests.push({ from: currentUserId, fromName: data.displayName||document.getElementById('userName').textContent, ts: Date.now() });
+    await sb.from('profiles').update({ app_data: theirData }).eq('id', target.id);
+    showToast(`Friend request sent to ${target.name}!`);
+    document.getElementById('friendInput').value='';
+  }catch(e){ showToast('Could not send request — try again.'); }
+});
+
+async function acceptFriend(fromId, fromName){
+  data.friends.push(fromId);
+  data.friendRequests = data.friendRequests.filter(r=>r.from!==fromId);
+  // also add ourselves to their friends list
+  try{
+    const { data: theirProfile } = await sb.from('profiles').select('app_data').eq('id',fromId).single();
+    if(theirProfile){
+      const theirData = Object.assign(newUserData(), theirProfile.app_data||{});
+      if(!theirData.friends.includes(currentUserId)) theirData.friends.push(currentUserId);
+      await sb.from('profiles').update({ app_data: theirData }).eq('id', fromId);
+    }
+  }catch(e){}
+  scheduleSave();
+  renderFriends();
+  showToast(`You and ${fromName} are now friends!`);
+}
+function declineFriend(fromId){
+  data.friendRequests = data.friendRequests.filter(r=>r.from!==fromId);
+  scheduleSave(); renderFriends();
+}
+async function removeFriend(id){
+  data.friends = data.friends.filter(f=>f!==id);
+  scheduleSave(); renderFriends();
+}
+
+function renderFriends(){
+  const reqWrap = document.getElementById('friendRequests');
+  const reqs = data.friendRequests||[];
+  reqWrap.innerHTML = reqs.length ? reqs.map(r=>`<div class="friend-row"><span>${r.fromName||r.from}</span><div style="display:flex;gap:6px;"><button class="btn small green" onclick="acceptFriend('${r.from}','${r.fromName||r.from}')">Accept</button><button class="btn small red" onclick="declineFriend('${r.from}')">Decline</button></div></div>`).join('') : '<p style="color:#aaa;font-size:.82rem;">No pending requests.</p>';
+  const friendWrap = document.getElementById('friendList');
+  friendWrap.innerHTML = (data.friends||[]).length ? (data.friends||[]).map(id=>`<div class="friend-row"><span class="mono" style="font-size:.75rem;">${id.slice(0,8)}…</span><button class="btn small ghost" onclick="removeFriend('${id}')">Remove</button></div>`).join('') : '<p style="color:#aaa;font-size:.82rem;">No friends yet.</p>';
+}
+
+async function renderLeaderboard(){
+  const wrap = document.getElementById('leaderboard');
+  wrap.innerHTML = '<p style="color:#aaa;font-size:.82rem;">Loading…</p>';
+  try{
+    let rows = [];
+    if(lbMode==='global'){
+      const { data: profiles } = await sb.from('profiles').select('id,name,app_data').limit(50);
+      rows = (profiles||[]).map(p=>({ id:p.id, name:p.name||'Student', xp:(p.app_data&&p.app_data.xp)||0, level:(p.app_data&&p.app_data.level)||1 }));
+    } else {
+      const ids = [...(data.friends||[]), currentUserId];
+      const { data: profiles } = await sb.from('profiles').select('id,name,app_data').in('id', ids);
+      rows = (profiles||[]).map(p=>({ id:p.id, name:p.name||'Student', xp:(p.app_data&&p.app_data.xp)||0, level:(p.app_data&&p.app_data.level)||1 }));
+    }
+    rows.sort((a,b)=>b.xp-a.xp);
+    wrap.innerHTML = rows.length ? rows.map((r,i)=>`<div class="lb-row ${r.id===currentUserId?'lb-me':''}"><span class="lb-rank">${i+1}</span><span class="lb-name">${r.name.replace(/</g,'&lt;')}${r.id===currentUserId?' (you)':''}</span><span class="lb-xp">Lv ${r.level} · ${r.xp} XP</span></div>`).join('') : '<p style="color:#aaa;font-size:.82rem;">Nobody to show yet.</p>';
+  }catch(e){ wrap.innerHTML='<p style="color:var(--red);font-size:.82rem;">Could not load leaderboard.</p>'; }
+}
+
+/* ===================== PRACTICE TEST SHARE ===================== */
+function renderPtList(){
+  const wrap = document.getElementById('ptList');
+  const tests = data.questionLog.practiceTests;
+  if(tests.length===0){ wrap.innerHTML = '<p style="color:#888;font-size:.85rem;">No practice tests yet — create one above.</p>'; return; }
+  wrap.innerHTML = tests.map(t=>{
+    const subj = data.questionLog.subjects[t.subjectIndex];
+    const subjName = subj ? subj.name : '(deleted subject)';
+    return `<div class="pt-card">
+      <div style="flex:1;min-width:200px;">
+        <input value="${t.name.replace(/"/g,'&quot;')}" onchange="renameTest(${t.id}, this.value)">
+        <div style="font-size:.75rem;color:#888;margin-top:4px;">${subjName} · Term ${t.term} · ${t.questionIds.length} question(s)</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn small green" onclick="startPracticeTest(${t.id})">Start</button>
+        <button class="btn small blue" onclick="sharePracticeTest(${t.id})">Share</button>
+        <button class="btn small red" onclick="deleteTest(${t.id})">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function sharePracticeTest(id){
+  const test = data.questionLog.practiceTests.find(t=>t.id===id);
+  if(!test) return;
+  const subj = data.questionLog.subjects[test.subjectIndex];
+  const questions = test.questionIds.map(qid=>{ for(const t of [1,2,3,4]){ const found=subj.terms[t].find(q=>q.id===qid); if(found) return found; } return null; }).filter(Boolean);
+  const payload = { name: test.name, questions };
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  document.getElementById('shareCode').textContent = encoded;
+  document.getElementById('shareModal').style.display='flex';
+}
+
+/* ===================== MISTAKE LOG — MANUAL ADD ===================== */
+function renderMlTypeFields(){
+  const type = document.getElementById('mlType').value;
+  const wrap = document.getElementById('mlTypeFields');
+  if(type==='mcq'){
+    wrap.innerHTML = `<div class="row">
+      <div><label>Option A</label><input id="mlOptA"></div><div><label>Option B</label><input id="mlOptB"></div>
+      <div><label>Option C</label><input id="mlOptC"></div><div><label>Option D</label><input id="mlOptD"></div>
+    </div>
+    <label>Correct option</label><select id="mlCorrectMcq"><option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option></select>`;
+  } else if(type==='tf'){
+    wrap.innerHTML = `<label>Correct answer</label><select id="mlCorrectTf"><option value="true">True</option><option value="false">False</option></select>`;
+  } else {
+    wrap.innerHTML = `<label>Correct / model answer</label><textarea id="mlModelAnswer" style="min-height:50px;"></textarea>`;
+  }
+}
+document.getElementById('mlType').addEventListener('change', renderMlTypeFields);
+let mlPendingImage='';
+document.getElementById('mlImageInput').addEventListener('change', (e)=>{
+  const file=e.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=()=>{ mlPendingImage=reader.result; document.getElementById('mlImagePreview').innerHTML=`<img class="qimg-thumb" src="${mlPendingImage}">`; };
+  reader.readAsDataURL(file);
+});
+function mlSubjectSelect(){
+  const sel = document.getElementById('mlSubject');
+  sel.innerHTML = data.questionLog.subjects.map((s,i)=>`<option value="${i}">${s.name}</option>`).join('');
+}
+document.getElementById('mlAddBtn').addEventListener('click', ()=>{
+  const prompt = document.getElementById('mlPrompt').value.trim();
+  if(!prompt){ showToast('Write the question prompt.'); return; }
+  const type = document.getElementById('mlType').value;
+  const userAnswer = document.getElementById('mlUserAnswer').value.trim();
+  const subjectIndex = parseInt(document.getElementById('mlSubject').value)||0;
+  const term = parseInt(document.getElementById('mlTerm').value)||1;
+  const category = document.getElementById('mlCategory').value.trim();
+  const difficulty = Math.max(1,Math.min(10,parseInt(document.getElementById('mlDifficulty').value)||5));
+  const image = mlPendingImage;
+  let correctAnswer='';
+  if(type==='mcq'){
+    const opts=['A','B','C','D'];
+    const letters=['mlOptA','mlOptB','mlOptC','mlOptD'].map(id=>document.getElementById(id).value.trim());
+    const correct=parseInt(document.getElementById('mlCorrectMcq').value)||0;
+    correctAnswer=`${opts[correct]}. ${letters[correct]}`;
+  } else if(type==='tf'){
+    correctAnswer=document.getElementById('mlCorrectTf').value==='true'?'True':'False';
+  } else {
+    correctAnswer=document.getElementById('mlModelAnswer').value.trim();
+  }
+  data.questionLog.mistakes.push({
+    id:++data.questionLog.mistakeSeq, ts:Date.now(),
+    subjectName:data.questionLog.subjects[subjectIndex].name, term, prompt, type,
+    correctAnswer, userAnswer, explanation:'', category, difficulty, image, manual:true
+  });
+  mlPendingImage='';
+  document.getElementById('mlImagePreview').innerHTML='';
+  document.getElementById('mlPrompt').value='';
+  document.getElementById('mlUserAnswer').value='';
+  document.getElementById('mlCategory').value='';
+  document.getElementById('mlDifficulty').value='5';
+  document.getElementById('mlImageInput').value='';
+  renderMlTypeFields();
+  renderMistakeList();
+  scheduleSave();
+  showToast('Added to mistake log.');
+});
+
+/* update renderMistakeList to show image, category, difficulty */
 function renderMistakeList(){
   const wrap = document.getElementById('mistakeList');
   const mistakes = data.questionLog.mistakes.slice().sort((a,b)=>b.ts-a.ts);
-  if(mistakes.length===0){ wrap.innerHTML = '<p style="color:#888;font-size:.85rem;">No mistakes logged yet — they\'ll show up here after a practice test.</p>'; return; }
+  if(mistakes.length===0){ wrap.innerHTML = '<p style="color:#888;font-size:.85rem;">No mistakes logged yet.</p>'; return; }
+  const typeLabel = {frq:'FRQ', mcq:'Multiple choice', tf:'True/False'};
   wrap.innerHTML = mistakes.map(m=>`
     <div class="mistake-card">
       <div class="qcard-prompt">${m.prompt.replace(/</g,'&lt;')}</div>
-      <div class="qmeta"><span class="qtype-badge">${m.subjectName} · Term ${m.term}</span></div>
+      <div class="qmeta">
+        <span class="qtype-badge">${m.subjectName} · Term ${m.term}</span>
+        ${m.category?`<span class="qcat-badge">${m.category.replace(/</g,'&lt;')}</span>`:''}
+        ${m.difficulty?`<span class="qdiff-badge">Difficulty ${m.difficulty}/10</span>`:''}
+        ${m.manual?`<span style="font-size:.65rem;background:#F1E5F6;color:#6b3d8a;padding:2px 6px;border-radius:8px;font-weight:700;">Manual</span>`:''}
+      </div>
+      ${m.image?`<img class="qimg-thumb" src="${m.image}">`:''}
       <div class="answer-compare">
-        <div class="wrong-ans">Your answer: ${m.userAnswer.replace(/</g,'&lt;')}</div>
-        <div class="right-ans">Correct answer: ${m.correctAnswer.replace(/</g,'&lt;')}</div>
+        <div class="wrong-ans">Your answer: ${(m.userAnswer||'(no answer)').replace(/</g,'&lt;')}</div>
+        <div class="right-ans">Correct: ${m.correctAnswer.replace(/</g,'&lt;')}</div>
       </div>
       <label style="margin-top:4px;">Why did I miss this?</label>
       <textarea style="min-height:60px;" oninput="updateMistakeExplanation(${m.id}, this.value)">${m.explanation||''}</textarea>
       <button class="btn small red" style="margin-top:6px;" onclick="deleteMistake(${m.id})">Delete</button>
     </div>`).join('');
 }
-function updateMistakeExplanation(id, val){
-  const m = data.questionLog.mistakes.find(m=>m.id===id);
-  if(m){ m.explanation = val; scheduleSave(); }
-}
-function deleteMistake(id){
-  data.questionLog.mistakes = data.questionLog.mistakes.filter(m=>m.id!==id);
-  renderMistakeList(); scheduleSave();
-}
 
-function renderQuestionLog(){
-  renderQSubjectTabs();
-  renderQTermTabs();
-  updateQCountTip();
-  renderQTypeFields();
-  renderQList();
-  renderPtSubjectSelect();
-  renderPtList();
-  renderMistakeList();
-  ptRunnerState = null;
-  document.getElementById('ptRunner').innerHTML='';
+/* ===================== CALENDAR ===================== */
+let calYear = new Date().getFullYear(), calMonth = new Date().getMonth(), calSelectedDay = null;
+const CAL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CAL_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function renderCalendar(){
+  const label = document.getElementById('calMonthLabel');
+  label.textContent = `${CAL_MONTHS[calMonth]} ${calYear}`;
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = CAL_DAYS.map(d=>`<div class="cal-day-label">${d}</div>`).join('');
+  const first = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  const daysInPrev = new Date(calYear, calMonth, 0).getDate();
+  const todayObj = new Date(); const todayD=todayObj.getDate(), todayM=todayObj.getMonth(), todayY=todayObj.getFullYear();
+
+  // collect events
+  const events = {};
+  const addEvent=(dateStr, text, cls)=>{ if(!events[dateStr]) events[dateStr]=[]; events[dateStr].push({text,cls}); };
+  data.tasks.forEach(t=>{ addEvent(t.effectiveDue, t.title.slice(0,20), 'cal-ev-task'); });
+  data.questionLog.mistakes.forEach(m=>{
+    const d=new Date(m.ts); const ds=d.toISOString().slice(0,10);
+    addEvent(ds, m.prompt.slice(0,20), 'cal-ev-mistake');
+  });
+
+  // prev month padding
+  for(let i=0;i<first;i++){
+    const d=daysInPrev-first+i+1;
+    grid.innerHTML += `<div class="cal-day other-month"><div class="cal-day-num">${d}</div></div>`;
+  }
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday=d===todayD&&calMonth===todayM&&calYear===todayY;
+    const isSelected=calSelectedDay===ds;
+    const evs=events[ds]||[];
+    const evHtml=evs.slice(0,3).map(e=>`<div class="cal-event ${e.cls}">${e.text.replace(/</g,'&lt;')}</div>`).join('');
+    grid.innerHTML+=`<div class="cal-day${isToday?' today':''}${isSelected?' selected':''}" data-date="${ds}">
+      <div class="cal-day-num">${d}</div>${evHtml}
+    </div>`;
+  }
+  // next month padding
+  const total=first+daysInMonth; const rem=(7-total%7)%7;
+  for(let i=1;i<=rem;i++) grid.innerHTML+=`<div class="cal-day other-month"><div class="cal-day-num">${i}</div></div>`;
+
+  grid.querySelectorAll('.cal-day:not(.other-month)').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      calSelectedDay=el.dataset.date;
+      renderCalendar();
+      showCalDayDetail(el.dataset.date);
+    });
+  });
+  if(!calSelectedDay) document.getElementById('calDayDetail').style.display='none';
 }
+function showCalDayDetail(dateStr){
+  const detail=document.getElementById('calDayDetail');
+  detail.style.display='block';
+  const tasks=data.tasks.filter(t=>t.effectiveDue===dateStr);
+  const mistakes=data.questionLog.mistakes.filter(m=>new Date(m.ts).toISOString().slice(0,10)===dateStr);
+  let html=`<h3>${dateStr}</h3>`;
+  if(tasks.length) html+=`<strong>Tasks due:</strong>`+tasks.map(t=>`<div class="home-item">📋 ${t.title.replace(/</g,'&lt;')}</div>`).join('');
+  if(mistakes.length) html+=`<strong>Mistakes logged:</strong>`+mistakes.map(m=>`<div class="home-item" style="color:var(--red);">❌ ${m.prompt.slice(0,60).replace(/</g,'&lt;')}</div>`).join('');
+  if(!tasks.length&&!mistakes.length) html+='<p style="color:#aaa;font-size:.82rem;">Nothing logged for this day.</p>';
+  detail.innerHTML=html;
+}
+document.getElementById('calPrevBtn').addEventListener('click', ()=>{ calMonth--; if(calMonth<0){calMonth=11;calYear--;} calSelectedDay=null; renderCalendar(); });
+document.getElementById('calNextBtn').addEventListener('click', ()=>{ calMonth++; if(calMonth>11){calMonth=0;calYear++;} calSelectedDay=null; renderCalendar(); });
+document.getElementById('calTodayBtn').addEventListener('click', ()=>{ calYear=new Date().getFullYear(); calMonth=new Date().getMonth(); calSelectedDay=null; renderCalendar(); });
 
 /* ===================== FULL RENDER ON LOGIN ===================== */
 function renderAll(){
   renderStats();
+  renderHome();
   renderTasks();
   renderBoxes();
   renderMindmap();
@@ -1216,5 +1573,13 @@ function renderAll(){
   loadFeynmanDraft();
   renderFeynmanStatus();
   renderQuestionLog();
+  renderFriends();
+  renderLeaderboard();
+  renderCalendar();
+  mlSubjectSelect();
+  renderMlTypeFields();
   buildSchedule();
+  applyDarkMode(data.darkMode||false);
+  // restore display name if saved
+  if(data.displayName) document.getElementById('userName').textContent = data.displayName;
 }

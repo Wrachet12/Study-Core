@@ -7,12 +7,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5483196886768719"
-     crossorigin="anonymous"></script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5483196886768719" crossorigin="anonymous"></script>
 </head>
 <body>
 
-<!-- ================= AUTH OVERLAY ================= -->
+<!-- AUTH -->
 <div id="authOverlay">
   <div class="auth-card">
     <a href="index.html" style="display:inline-block;font-size:.78rem;color:#9a916f;text-decoration:none;margin-bottom:10px;">← Back to home</a>
@@ -22,14 +21,12 @@
       <button class="auth-tab active" id="showLogin">Log in</button>
       <button class="auth-tab" id="showSignup">Sign up</button>
     </div>
-
     <form class="auth-form" id="loginForm">
       <input type="email" id="loginEmail" placeholder="Email" autocomplete="username" required>
       <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required>
       <div class="auth-error" id="loginError"></div>
       <button class="btn amber" type="submit">Log in</button>
     </form>
-
     <form class="auth-form" id="signupForm" style="display:none;">
       <input type="text" id="signupName" placeholder="First name" required>
       <input type="email" id="signupEmail" placeholder="Email" autocomplete="username" required>
@@ -39,16 +36,19 @@
       <div class="auth-error" id="signupError"></div>
       <button class="btn amber" type="submit">Create account</button>
     </form>
-
-    <div class="lock-note">🔒 Your account is protected by Supabase Auth (industry-standard hashing, never plain text), and your planner, notes, mind maps, flashcards, and streak are saved to the cloud — so they're there when you log back in from any device.</div>
+    <div class="lock-note">🔒 Protected by Supabase Auth — passwords hashed, data synced to your account across all devices.</div>
   </div>
 </div>
 
-<!-- ================= APP SHELL ================= -->
+<!-- APP SHELL -->
 <div id="appShell" style="display:none;">
 
 <div class="topbar">
   <div class="brand"><span class="lamp"></span> Stud Desk</div>
+  <div class="topbar-center">
+    <input id="globalSearch" placeholder="🔍 Search notes, flashcards, questions…" autocomplete="off">
+    <div id="searchResults" class="search-dropdown"></div>
+  </div>
   <div class="stats">
     <div class="level-pill">Lv <span id="levelNum">1</span></div>
     <div class="xpbar-wrap"><div class="xpbar-fill" id="xpBar"></div></div>
@@ -56,40 +56,92 @@
     <div class="streak">🔥 <span id="streakNum">0</span></div>
     <div class="userbox">
       <span id="userName"></span>
+      <button id="accountBtn">⚙ Account</button>
       <button id="logoutBtn">Log out</button>
     </div>
   </div>
 </div>
 
+<!-- ACCOUNT SETTINGS MODAL -->
+<div id="accountModal" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <h2>Account settings</h2>
+    <label>Display name</label>
+    <input id="settingsName" placeholder="Your name">
+    <label style="margin-top:14px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+      <input type="checkbox" id="darkModeToggle" style="width:auto;">
+      Dark mode
+    </label>
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button class="btn amber" id="saveSettingsBtn">Save</button>
+      <button class="btn ghost" id="closeSettingsBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <nav class="tabs">
-  <button class="tab active" data-tab="study">📚 Study</button>
+  <button class="tab active" data-tab="home">🏠 Today</button>
+  <button class="tab" data-tab="study">📚 Study</button>
   <button class="tab" data-tab="planner">🗓 Planner</button>
   <button class="tab" data-tab="timer">⏱ Timer</button>
   <button class="tab" data-tab="notes">📓 Notes</button>
   <button class="tab" data-tab="qlog">❓ Question Log</button>
+  <button class="tab" data-tab="social">👥 Friends</button>
+  <button class="tab" data-tab="calendar">📅 Calendar</button>
 </nav>
 
 <main>
 
-<!-- ================= STUDY TAB ================= -->
-<section id="study" class="panel active">
+<!-- TODAY TAB -->
+<section id="home" class="panel active">
+  <div style="max-width:900px;margin:0 auto;">
+    <h2 id="todayGreeting" style="font-size:1.6rem;margin-bottom:4px;"></h2>
+    <p id="todayDate" style="color:#777;font-size:.85rem;margin-bottom:20px;"></p>
+    <div class="home-grid">
+      <div class="card home-card">
+        <h3>📋 Due today / urgent</h3>
+        <div id="homeTasks"></div>
+      </div>
+      <div class="card home-card">
+        <h3>🃏 Leitner cards ready</h3>
+        <div id="homeLeitner"></div>
+      </div>
+      <div class="card home-card">
+        <h3>📅 Upcoming (next 7 days)</h3>
+        <div id="homeUpcoming"></div>
+      </div>
+      <div class="card home-card">
+        <h3>⚠️ Weak spots</h3>
+        <div id="homeWeakness"></div>
+      </div>
+      <div class="card home-card">
+        <h3>🔥 Streak &amp; XP</h3>
+        <div id="homeStats"></div>
+      </div>
+      <div class="card home-card">
+        <h3>❓ Unreviewed mistakes</h3>
+        <div id="homeMistakes"></div>
+      </div>
+    </div>
+  </div>
+</section>
 
+<!-- STUDY TAB -->
+<section id="study" class="panel">
   <div class="card">
-    <h2>Mind map — one-pager for a topic</h2>
-    <p style="font-size:.85rem;color:#555;">Double-click anywhere to drop a bubble. Drag bubbles around, click the text to edit it. Turn on <strong>Connect</strong>, then click two bubbles in a row to draw a line between them; click the same pair again to remove that line.</p>
+    <h2>Mind map</h2>
+    <p style="font-size:.85rem;color:#555;">Double-click anywhere to drop a bubble. Turn on <strong>Connect</strong> then click two bubbles to draw a line.</p>
     <div class="pillgroup">
       <button class="btn small ghost" id="addBubbleBtn">+ Add bubble</button>
       <button class="btn small ghost" id="connectModeBtn">🔗 Connect</button>
       <button class="btn small ghost" id="clearMapBtn">Clear map</button>
     </div>
-    <div id="mindmapCanvas">
-      <svg class="map-lines" id="mapLines"></svg>
-    </div>
+    <div id="mindmapCanvas"><svg class="map-lines" id="mapLines"></svg></div>
   </div>
 
   <div class="card">
-    <h2>Leitner box system — hardest → easiest</h2>
-    <p style="font-size:.85rem;color:#555;">Add a concept card to whichever box fits. Reviews only unlock once a card's interval has actually passed — that's what keeps the XP honest.</p>
+    <h2>Leitner box system</h2>
+    <p style="font-size:.85rem;color:#555;">Reviews only unlock once the interval has actually passed — keeps XP honest.</p>
     <div class="row">
       <div style="flex:3"><input id="leitnerInput" placeholder="e.g. Krebs cycle steps"></div>
       <div style="flex:1">
@@ -108,7 +160,7 @@
 
   <div class="card">
     <h2>Flashcards</h2>
-    <p style="font-size:.85rem;color:#555;">5 stacks, up to 150 cards each. Rename a stack to match a subject, then add cards and flip through them.</p>
+    <p style="font-size:.85rem;color:#555;">5 stacks, 150 cards each. Rename to match subjects.</p>
     <div class="subject-tabs" id="flashStackTabs"></div>
     <div class="row" style="align-items:flex-end;">
       <div style="flex:2"><label>Stack name</label><input id="flashStackName" placeholder="Subject name"></div>
@@ -117,33 +169,30 @@
     <div class="row">
       <div><label>Front (question)</label><textarea id="flashFront" style="min-height:60px;"></textarea></div>
       <div><label>Back (answer)</label><textarea id="flashBack" style="min-height:60px;"></textarea></div>
+      <div><label>Category (optional)</label><input id="flashCategory" placeholder="e.g. Vocabulary"></div>
     </div>
-    <button class="btn amber" id="flashAddBtn" style="margin-top:8px;">+ Add card</button>
+    <div class="pillgroup" style="margin-top:4px;">
+      <button class="btn amber" id="flashAddBtn">+ Add card</button>
+      <button class="btn ghost small" id="flashShareBtn">🔗 Share stack</button>
+    </div>
     <div id="flashViewer" style="margin-top:16px;"></div>
   </div>
 
   <div class="card">
-    <h3>Feynman Technique</h3>
-    <p style="font-size:.85rem;color:#555;">Explain a concept so simply a beginner could follow it. The gaps you find are exactly what to restudy. Use the worksheet in the <strong>Notes</strong> tab.</p>
-    <h3>Parkinson's Law</h3>
-    <p style="font-size:.85rem;color:#555;">Work expands to fill the time you give it. In the <strong>Planner</strong> tab you can tighten a deadline on purpose to create healthy urgency.</p>
-    <h3>Pomodoro Technique</h3>
-    <p style="font-size:.85rem;color:#555;">Short focused sprints followed by a short break keep attention fresh. Run it from the <strong>Timer</strong> tab.</p>
+    <h3>Study techniques</h3>
+    <p style="font-size:.85rem;color:#555;"><strong>Feynman:</strong> Explain it like you're teaching a 10-year-old — worksheet in Notes tab.<br>
+    <strong>Parkinson's Law:</strong> Tighten your deadline in the Planner to force focus.<br>
+    <strong>Pomodoro:</strong> Short focused sprints in the Timer tab.</p>
   </div>
 </section>
 
-<!-- ================= PLANNER TAB ================= -->
+<!-- PLANNER TAB -->
 <section id="planner" class="panel">
-
   <div class="card">
     <h2>Add an assignment</h2>
     <div class="row">
-      <div>
-        <label>Step description (not the end goal)</label>
-        <input id="taskTitle" placeholder="e.g. Review chapter 3 vocabulary">
-      </div>
-      <div>
-        <label>Workload type</label>
+      <div><label>Step description</label><input id="taskTitle" placeholder="e.g. Review chapter 3 vocabulary"></div>
+      <div><label>Workload type</label>
         <select id="taskType">
           <option value="questions">Questions (worksheet)</option>
           <option value="pages">Pages (reading)</option>
@@ -164,9 +213,8 @@
     </div>
     <div id="vagueWarning"></div>
     <button class="btn amber" id="addTaskBtn" style="margin-top:10px;">Add to planner</button>
-    <div class="tip">Tip: write the next concrete step, not the finish line. "Study this topic for the test" is risky — break it into named steps like "Outline causes of WWI" or "Redo missed practice problems".</div>
+    <div class="tip">Tip: write the next concrete step, not the finish line.</div>
   </div>
-
   <div class="card">
     <h2>Your plan</h2>
     <div class="pillgroup">
@@ -177,7 +225,7 @@
   </div>
 </section>
 
-<!-- ================= TIMER TAB ================= -->
+<!-- TIMER TAB -->
 <section id="timer" class="panel">
   <div class="card">
     <h2>Pomodoro timer</h2>
@@ -205,7 +253,7 @@
         <div class="legend">
           <span><span class="dot" style="background:#9fd9af;"></span>Recommended (4–8 pm)</span>
           <span><span class="dot" style="background:#ef9d99;"></span>Risky (4–7 am)</span>
-          <span><span class="dot" style="background:#e7e2cf;"></span>Other hours / 10am–2pm weekdays = weekends &amp; days off only</span>
+          <span><span class="dot" style="background:#e7e2cf;"></span>Other / 10am–2pm weekdays = weekends only</span>
         </div>
         <p id="scheduleNote" style="font-size:.85rem;margin-top:8px;font-weight:600;"></p>
       </div>
@@ -213,7 +261,7 @@
   </div>
 </section>
 
-<!-- ================= NOTES TAB ================= -->
+<!-- NOTES TAB -->
 <section id="notes" class="panel">
   <div class="subtabs">
     <button class="subtab active" data-sub="basic">Basic notes</button>
@@ -223,12 +271,11 @@
 
   <div id="basic" class="subpanel card">
     <h2>Basic notes</h2>
-    <p style="font-size:.85rem;color:#555;">5 separate notebooks — rename each to a subject. Every notebook holds up to 300 pages.</p>
+    <p style="font-size:.85rem;color:#555;">5 subject notebooks, 300 pages each.</p>
     <div class="subject-tabs" id="basicSubjectTabs"></div>
     <div class="row" style="align-items:flex-end;">
       <div style="flex:2"><label>Subject name</label><input id="basicSubjectName" placeholder="Subject name"></div>
-      <div style="flex:1">
-        <label>Page</label>
+      <div style="flex:1"><label>Page</label>
         <div class="page-nav">
           <button class="btn small ghost" id="basicPrevPage">‹</button>
           <input type="number" id="basicPageNum" min="1" max="300" value="1">
@@ -256,12 +303,11 @@
 
   <div id="formal" class="subpanel card" style="display:none;">
     <h2>Formal notes — Cornell layout</h2>
-    <p style="font-size:.85rem;color:#555;">5 separate notebooks — rename each to a subject. Every notebook holds up to 300 pages.</p>
+    <p style="font-size:.85rem;color:#555;">5 subject notebooks, 300 pages each.</p>
     <div class="subject-tabs" id="formalSubjectTabs"></div>
     <div class="row" style="align-items:flex-end;">
       <div style="flex:2"><label>Subject name</label><input id="formalSubjectName" placeholder="Subject name"></div>
-      <div style="flex:1">
-        <label>Page</label>
+      <div style="flex:1"><label>Page</label>
         <div class="page-nav">
           <button class="btn small ghost" id="formalPrevPage">‹</button>
           <input type="number" id="formalPageNum" min="1" max="300" value="1">
@@ -292,11 +338,11 @@
 
   <div id="feynman" class="subpanel card" style="display:none;">
     <h2>Feynman technique worksheet</h2>
-    <p style="font-size:.85rem;color:#555;">Capped at 5 logged sessions a day to keep this about real practice, not XP farming. Once you hit 5, it unlocks again at 2:00 PM the next day.</p>
+    <p style="font-size:.85rem;color:#555;">Capped at 5 logged sessions a day. Unlocks at 2:00 PM tomorrow once you hit the cap.</p>
     <div class="feynman-grid">
       <textarea id="fConcept" placeholder="1. Concept I'm learning"></textarea>
       <textarea id="fExplain" placeholder="2. Explain it like I'm teaching a 10-year-old"></textarea>
-      <textarea id="fGaps" placeholder="3. Where did I get stuck or use a fuzzy word?"></textarea>
+      <textarea id="fGaps" placeholder="3. Where did I get stuck?"></textarea>
       <textarea id="fSimplify" placeholder="4. Simplify and find an analogy"></textarea>
     </div>
     <div id="feynmanStatus" class="tip" style="margin-top:10px;"></div>
@@ -304,7 +350,7 @@
   </div>
 </section>
 
-<!-- ================= QUESTION LOG TAB ================= -->
+<!-- QUESTION LOG TAB -->
 <section id="qlog" class="panel">
   <div class="subtabs">
     <button class="qsubtab active" data-qsub="qbank">Question Bank</button>
@@ -314,19 +360,17 @@
 
   <div id="qbank" class="qsubpanel card">
     <h2>Question bank</h2>
-    <p style="font-size:.85rem;color:#555;">5 subjects, up to 200 questions each, split into 4 terms of 50 questions.</p>
+    <p style="font-size:.85rem;color:#555;">5 subjects, 200 questions each, across 4 terms of 50.</p>
     <div class="subject-tabs" id="qSubjectTabs"></div>
     <div class="row" style="align-items:flex-end;">
       <div style="flex:2"><label>Subject name</label><input id="qSubjectName" placeholder="Subject name"></div>
       <div style="flex:2"><label>Term</label><div class="subject-tabs" id="qTermTabs"></div></div>
     </div>
     <div class="tip" id="qCountTip"></div>
-
     <h3 style="margin-top:18px;">Add / edit a question</h3>
     <div class="row">
       <div style="flex:2"><label>Question prompt</label><textarea id="qPrompt" style="min-height:70px;"></textarea></div>
-      <div>
-        <label>Type</label>
+      <div><label>Type</label>
         <select id="qType">
           <option value="frq">Free response (FRQ)</option>
           <option value="mcq">Multiple choice (A–D)</option>
@@ -345,14 +389,13 @@
       <button class="btn amber" id="qAddBtn">+ Add question</button>
       <button class="btn ghost" id="qCancelEditBtn" style="display:none;">Cancel edit</button>
     </div>
-
     <h3 style="margin-top:20px;">Questions in this term</h3>
     <div id="qList"></div>
   </div>
 
   <div id="qtests" class="qsubpanel card" style="display:none;">
     <h2>Practice tests</h2>
-    <p style="font-size:.85rem;color:#555;">Build a test from everything currently in a subject's term, then take it. Name and edit it any time.</p>
+    <p style="font-size:.85rem;color:#555;">Build a test from a subject's term. Share or take it any time.</p>
     <div class="row">
       <div><label>Test name</label><input id="ptName" placeholder="e.g. Midterm review"></div>
       <div><label>Subject</label><select id="ptSubject"></select></div>
@@ -369,8 +412,103 @@
 
   <div id="qmistakes" class="qsubpanel card" style="display:none;">
     <h2>Mistake log</h2>
-    <p style="font-size:.85rem;color:#555;">Auto-filled whenever you miss a question on a practice test. Jot down why, so the same mistake doesn't happen twice.</p>
+    <p style="font-size:.85rem;color:#555;">Auto-filled from practice tests. Also add questions you missed on real tests.</p>
+    <div class="card" style="background:#fffef5;border:1px solid #ddd;margin-bottom:16px;">
+      <h3>+ Add a missed real-test question</h3>
+      <div class="row">
+        <div style="flex:2"><label>Question prompt</label><textarea id="mlPrompt" style="min-height:60px;"></textarea></div>
+        <div><label>Type</label>
+          <select id="mlType">
+            <option value="frq">Free response</option>
+            <option value="mcq">Multiple choice (A–D)</option>
+            <option value="tf">True / False</option>
+          </select>
+        </div>
+      </div>
+      <div id="mlTypeFields"></div>
+      <div class="row">
+        <div><label>Your answer</label><input id="mlUserAnswer" placeholder="What you wrote"></div>
+        <div><label>Subject</label><select id="mlSubject"></select></div>
+        <div><label>Term</label>
+          <select id="mlTerm">
+            <option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option><option value="4">Term 4</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div><label>Category</label><input id="mlCategory" placeholder="e.g. Algebra"></div>
+        <div><label>Difficulty (1–10)</label><input id="mlDifficulty" type="number" min="1" max="10" value="5"></div>
+        <div><label>Image (optional)</label><input id="mlImageInput" type="file" accept="image/*"></div>
+      </div>
+      <div id="mlImagePreview"></div>
+      <button class="btn amber" id="mlAddBtn" style="margin-top:8px;">Add to mistake log</button>
+    </div>
     <div id="mistakeList"></div>
+  </div>
+</section>
+
+<!-- FRIENDS & LEADERBOARD TAB -->
+<section id="social" class="panel">
+  <div class="card">
+    <h2>Friends</h2>
+    <p style="font-size:.85rem;color:#555;">Add friends by their exact display name. Once accepted, you'll appear on each other's leaderboard.</p>
+    <div class="row" style="align-items:flex-end;">
+      <div style="flex:3"><label>Display name to add</label><input id="friendInput" placeholder="Their exact display name"></div>
+      <div style="flex:1"><button class="btn amber" id="friendAddBtn" style="width:100%;margin-top:0">Send request</button></div>
+    </div>
+    <div class="row" style="margin-top:16px;gap:20px;">
+      <div style="flex:1">
+        <h3>Incoming requests</h3>
+        <div id="friendRequests"></div>
+      </div>
+      <div style="flex:1">
+        <h3>Your friends</h3>
+        <div id="friendList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Leaderboard</h2>
+    <div class="pillgroup">
+      <button class="pill-toggle active" id="lbFriendsBtn" data-lb="friends">Friends</button>
+      <button class="pill-toggle" id="lbGlobalBtn" data-lb="global">Global</button>
+    </div>
+    <div id="leaderboard"></div>
+  </div>
+
+  <!-- Share modal for flashcards -->
+  <div id="shareModal" class="modal-overlay" style="display:none;">
+    <div class="modal-card">
+      <h2>Share flashcard stack</h2>
+      <p style="font-size:.85rem;color:#555;">Anyone with this code can import a copy of this stack.</p>
+      <div style="background:#f4f0e4;padding:12px;border-radius:8px;font-family:monospace;word-break:break-all;font-size:.82rem;" id="shareCode"></div>
+      <div style="margin-top:14px;">
+        <button class="btn amber" id="copyShareCodeBtn">Copy code</button>
+        <button class="btn ghost" id="closeShareModal" style="margin-left:8px;">Close</button>
+      </div>
+      <hr style="margin:18px 0;">
+      <h3>Import a stack</h3>
+      <div class="row" style="align-items:flex-end;">
+        <div style="flex:3"><input id="importCodeInput" placeholder="Paste share code"></div>
+        <div style="flex:1"><button class="btn blue" id="importStackBtn" style="width:100%">Import</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CALENDAR TAB -->
+<section id="calendar" class="panel">
+  <div class="card">
+    <h2>Calendar</h2>
+    <div class="cal-nav">
+      <button class="btn small ghost" id="calPrevBtn">‹</button>
+      <span id="calMonthLabel" style="font-family:'Fraunces',serif;font-size:1.1rem;font-weight:700;"></span>
+      <button class="btn small ghost" id="calNextBtn">›</button>
+      <button class="btn small amber" id="calTodayBtn">Today</button>
+    </div>
+    <div id="calGrid" class="cal-grid"></div>
+    <div id="calDayDetail" class="cal-day-detail" style="display:none;"></div>
   </div>
 </section>
 

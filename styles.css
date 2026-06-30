@@ -270,3 +270,100 @@ details summary{cursor:pointer;font-size:.8rem;color:#5b8aa8;font-weight:600;mar
   .xpbar-wrap{width:80px;}
   .userbox{padding-left:8px;}
 }
+
+/* ---------- DARK MODE ---------- */
+body.dark-mode{
+  --paper:#1e2330;--paper-line:#2d3450;--ink:#e8e3d6;--text:#e8e3d6;--text-dim:#8a91a8;
+  background:var(--bg);
+}
+body.dark-mode main{background:var(--surface);}
+body.dark-mode .card{background:var(--surface2);border-color:var(--paper-line);color:var(--text);}
+body.dark-mode input,body.dark-mode select,body.dark-mode textarea{background:#1a2035;color:var(--text);border-color:#3a4360;}
+body.dark-mode .task,body.dark-mode .qcard,body.dark-mode .lcard,body.dark-mode .flip-card,body.dark-mode .pt-card,body.dark-mode .mistake-card{background:var(--surface);border-color:var(--paper-line);color:var(--text);}
+body.dark-mode .tip{background:#2a2e1e;border-left-color:var(--amber);color:#c9a85a;}
+body.dark-mode .tip.risk{background:#2e1a1a;color:#d98f8c;}
+body.dark-mode .tip.good{background:#1a2e1f;color:#7dbf8a;}
+body.dark-mode .subject-tabs button{background:var(--surface);border-color:#3a4360;color:var(--text-dim);}
+body.dark-mode .subject-tabs button.active{background:var(--amber);color:#1a1005;}
+
+/* ---------- SEARCH BAR ---------- */
+.topbar-center{position:relative;flex:1;max-width:360px;margin:0 18px;}
+.topbar-center input{padding:7px 12px;border-radius:20px;border:1px solid #3a4360;background:#11151f;color:var(--text);font-size:.85rem;width:100%;}
+.search-dropdown{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface2);
+  border:1px solid #3a4360;border-radius:8px;max-height:280px;overflow-y:auto;z-index:200;display:none;
+}
+.search-dropdown.open{display:block;}
+.search-result{padding:10px 14px;cursor:pointer;font-size:.83rem;border-bottom:1px solid #2d3450;color:var(--text);}
+.search-result:hover{background:#2d3650;}
+.search-result .sr-type{font-size:.68rem;text-transform:uppercase;color:var(--text-dim);font-weight:700;}
+
+/* ---------- ACCOUNT SETTINGS / MODALS ---------- */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:500;
+}
+.modal-card{
+  background:var(--paper);color:var(--ink);border-radius:14px;padding:28px 26px;width:340px;
+  box-shadow:0 20px 60px rgba(0,0,0,.4);max-height:90vh;overflow-y:auto;
+}
+body.dark-mode .modal-card{background:var(--surface2);color:var(--text);}
+.modal-card h2{margin-bottom:14px;}
+.modal-card label{display:block;font-size:.78rem;font-weight:600;color:#666;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.04em;}
+body.dark-mode .modal-card label{color:var(--text-dim);}
+#accountBtn{background:transparent;border:1px solid #4a5478;color:var(--text-dim);border-radius:6px;padding:5px 10px;font-size:.78rem;}
+#accountBtn:hover{color:#fff;border-color:#7a87b8;}
+
+/* ---------- TODAY / HOME SCREEN ---------- */
+.home-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+.home-card{min-height:120px;}
+.home-card h3{font-size:.92rem;margin-bottom:10px;}
+.home-item{font-size:.82rem;padding:4px 0;border-bottom:1px solid var(--paper-line);color:#444;}
+.home-item:last-child{border-bottom:none;}
+body.dark-mode .home-item{color:var(--text-dim);}
+.home-empty{font-size:.8rem;color:#aaa;font-style:italic;}
+
+/* ---------- FRIENDS / LEADERBOARD ---------- */
+.friend-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--paper-line);font-size:.85rem;}
+.lb-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;margin-bottom:6px;background:#fffdf8;font-size:.85rem;}
+body.dark-mode .lb-row{background:var(--surface);}
+.lb-rank{font-family:'JetBrains Mono',monospace;font-weight:700;width:26px;color:var(--amber);}
+.lb-name{flex:1;font-weight:600;}
+.lb-xp{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--text-dim);}
+.lb-row.lb-me{background:#FBF1DC;border:1px solid var(--amber);}
+body.dark-mode .lb-row.lb-me{background:#2a2416;}
+.pill-toggle.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+
+/* ---------- CALENDAR ---------- */
+.cal-nav{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.cal-day-label{text-align:center;font-size:.72rem;font-weight:700;color:var(--text-dim);padding:4px 0;text-transform:uppercase;}
+.cal-day{
+  min-height:68px;border:1px solid var(--paper-line);border-radius:6px;padding:5px 6px;cursor:pointer;
+  background:#fffdf8;transition:.1s;
+}
+body.dark-mode .cal-day{background:var(--surface);}
+.cal-day:hover{background:#f0ead8;}
+body.dark-mode .cal-day:hover{background:#2d3650;}
+.cal-day.today{border:2px solid var(--amber);background:#FFF8EE;}
+.cal-day.other-month{opacity:.4;}
+.cal-day.selected{background:#E3EEF8;border-color:var(--blue);}
+.cal-day-num{font-size:.75rem;font-weight:700;color:#777;}
+.cal-event{font-size:.62rem;background:var(--amber);color:#2a1c05;border-radius:3px;padding:1px 4px;margin-top:2px;font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.cal-event.cal-ev-task{background:#9fd9af;color:#0d2e16;}
+.cal-event.cal-ev-mistake{background:#ef9d99;color:#5a1714;}
+.cal-day-detail{background:#fffdf8;border:1px solid var(--paper-line);border-radius:8px;padding:14px 16px;margin-top:10px;}
+body.dark-mode .cal-day-detail{background:var(--surface);}
+.cal-day-detail h3{font-size:.95rem;margin-bottom:10px;}
+
+/* ---------- SHARE / IMPORT FLASHCARD CODE ---------- */
+.share-code-box{background:#f4f0e4;padding:12px;border-radius:8px;font-family:monospace;word-break:break-all;font-size:.82rem;}
+body.dark-mode .share-code-box{background:#1a2035;}
+
+@media(max-width:800px){
+  .home-grid{grid-template-columns:1fr 1fr;}
+  .topbar-center{max-width:180px;}
+}
+@media(max-width:550px){
+  .home-grid{grid-template-columns:1fr;}
+  .topbar-center{display:none;}
+}
