@@ -102,7 +102,7 @@ async function loadProfileAndEnter(userId, email){
   document.getElementById('authOverlay').style.display='none';
   document.getElementById('appShell').style.display='block';
   document.getElementById('userName').textContent = profile.name || (email ? email.split('@')[0] : 'Student');
-  renderAll();
+  await renderAll();
 }
 
 document.getElementById('logoutBtn').addEventListener('click', async ()=>{
@@ -131,7 +131,17 @@ function scheduleSave(){
 async function saveData(){
   if(!currentUserId || !data) return;
   try{
-    await sb.from('profiles').update({ app_data: data, updated_at: new Date().toISOString() }).eq('id', currentUserId);
+    // BUGFIX: xp/level/streak weren't being synced to their own profile
+    // columns, only buried inside app_data — but the public leaderboard view
+    // reads xp/level from those columns, so the leaderboard always showed 0
+    // for everyone. Keep both in sync on every save.
+    await sb.from('profiles').update({
+      app_data: data,
+      xp: data.xp||0,
+      level: data.level||1,
+      streak: data.streak||0,
+      updated_at: new Date().toISOString()
+    }).eq('id', currentUserId);
   }catch(err){
     console.error('Save failed', err);
     showToast('Could not save your changes — check your connection.');
@@ -628,30 +638,73 @@ document.getElementById('flashStackName').addEventListener('input', (e)=>{
   renderSubjectTabs('flashStackTabs', data.flashcardStacks, flashActiveStack, (i)=>{ flashActiveStack=i; flashActiveCard=0; flashFlipped=false; renderFlashAll(); });
   scheduleSave();
 });
+// BUGFIX (share rewrite): sharing used to synchronously JSON.stringify +
+// base64-encode the whole deck (including any embedded images) BEFORE
+// showing the modal — with anything but a tiny deck that's a real, visible
+// freeze before the popup appears. The setup SQL already has a
+// public.shared_decks table for exactly this. Open the modal instantly in a
+// "generating…" state, then do the (fast) DB insert in the background —
+// and the resulting code is short and works across devices.
+async function shareViaTable(kind, title, payload){
+  document.getElementById('shareCode').textContent = 'Generating code…';
+  document.getElementById('shareModal').style.display='flex';
+  try{
+    const code = Math.random().toString(36).slice(2,8).toUpperCase();
+    const { error } = await sb.from('shared_decks').insert({
+      owner_id: currentUserId,
+      owner_name: data.displayName || document.getElementById('userName').textContent,
+      title, kind, payload, share_code: code
+    });
+    if(error) throw error;
+    document.getElementById('shareCode').textContent = code;
+  }catch(e){
+    document.getElementById('shareCode').textContent = 'Error generating code — close and try again.';
+  }
+}
 document.getElementById('flashShareBtn').addEventListener('click', ()=>{
   const stack = data.flashcardStacks[flashActiveStack];
-  const payload = { name: stack.name, cards: stack.cards };
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-  document.getElementById('shareCode').textContent = encoded;
-  document.getElementById('shareModal').style.display='flex';
+  shareViaTable('flashcards', stack.name, { name: stack.name, cards: stack.cards });
 });
 document.getElementById('closeShareModal').addEventListener('click', ()=>{ document.getElementById('shareModal').style.display='none'; });
 document.getElementById('copyShareCodeBtn').addEventListener('click', ()=>{
   navigator.clipboard.writeText(document.getElementById('shareCode').textContent).then(()=>showToast('Code copied!'));
 });
-document.getElementById('importStackBtn').addEventListener('click', ()=>{
+document.getElementById('importStackBtn').addEventListener('click', async ()=>{
+  const code = document.getElementById('importCodeInput').value.trim().toUpperCase();
+  if(!code){ showToast('Enter a share code.'); return; }
   try{
-    const code = document.getElementById('importCodeInput').value.trim();
-    const payload = JSON.parse(decodeURIComponent(escape(atob(code))));
-    if(!payload.cards || !Array.isArray(payload.cards)) throw new Error('Invalid code');
-    const emptyStack = data.flashcardStacks.findIndex(s=>s.cards.length===0);
-    const target = emptyStack>-1 ? emptyStack : 0;
-    data.flashcardStacks[target].name = payload.name || 'Imported';
-    data.flashcardStacks[target].cards = payload.cards.map(c=>({...c, id:data.flashcardSeq++}));
-    flashActiveStack = target; flashActiveCard=0; flashFlipped=false;
-    renderFlashAll();
+    const { data: rows } = await sb.from('shared_decks').select('*').eq('share_code', code).limit(1);
+    if(!rows || rows.length===0){ showToast('Invalid share code — check and try again.'); return; }
+    const deck = rows[0];
+    if(deck.kind === 'flashcards'){
+      const payload = deck.payload;
+      if(!payload.cards || !Array.isArray(payload.cards)) throw new Error('Invalid deck');
+      const emptyStack = data.flashcardStacks.findIndex(s=>s.cards.length===0);
+      const target = emptyStack>-1 ? emptyStack : 0;
+      data.flashcardStacks[target].name = payload.name || 'Imported';
+      data.flashcardStacks[target].cards = payload.cards.map(c=>({...c, id:data.flashcardSeq++}));
+      flashActiveStack = target; flashActiveCard=0; flashFlipped=false;
+      renderFlashAll();
+      showToast(`Imported "${payload.name}" into Stack ${target+1}.`);
+    } else if(deck.kind === 'practice_test'){
+      // BUGFIX: importing a shared practice test never worked before — this
+      // shared modal only ever checked for a `.cards` array, so a practice
+      // test's `.questions` payload silently failed with "Invalid share code".
+      const payload = deck.payload;
+      if(!payload.questions || !Array.isArray(payload.questions)) throw new Error('Invalid deck');
+      const subj = data.questionLog.subjects[qActiveSubject];
+      const newIds = payload.questions.map(q=>{
+        const newQ = {...q, id: ++data.questionLog.questionSeq};
+        subj.terms[qActiveTerm].push(newQ);
+        return newQ.id;
+      });
+      data.questionLog.practiceTests.push({ id: ++data.questionLog.testSeq, name: payload.name||'Imported test', subjectIndex: qActiveSubject, term: qActiveTerm, questionIds: newIds });
+      renderQList(); renderPtList(); updateQCountTip();
+      showToast(`Imported practice test "${payload.name}" into ${subj.name}, Term ${qActiveTerm}.`);
+    } else {
+      throw new Error('Unknown deck kind');
+    }
     scheduleSave();
-    showToast(`Imported "${payload.name}" into Stack ${target+1}.`);
     document.getElementById('importCodeInput').value='';
     document.getElementById('shareModal').style.display='none';
   }catch(e){ showToast('Invalid share code — check and try again.'); }
@@ -806,6 +859,15 @@ document.getElementById('clearMapBtn').addEventListener('click', ()=>{
 /* ===================== LEITNER BOXES ===================== */
 const boxLabels = {1:'Box 1 — hardest',2:'Box 2',3:'Box 3',4:'Box 4',5:'Box 5 — easiest'};
 const DAY_MS = 86400000;
+// Due at 11:59:59 PM on (today + intervalDays), not an exact 24h-multiple from "now".
+// This means a card added at 7pm is due by 11:59pm the same calendar day + interval,
+// not stuck waiting until 7pm on the future day.
+function nextReviewEndOfDay(intervalDays){
+  const d = new Date();
+  d.setDate(d.getDate() + intervalDays);
+  d.setHours(23,59,59,999);
+  return d.getTime();
+}
 function renderBoxes(){
   if(!data) return;
   const wrap = document.getElementById('boxesWrap');
@@ -819,11 +881,12 @@ function renderBoxes(){
       const due = now >= c.nextReviewTs;
       const cardEl = document.createElement('div');
       cardEl.className = 'lcard'+(due?' due':'');
-      const dueText = due ? 'ready now' : `unlocks in ${fmtCountdown(c.nextReviewTs-now)}`;
+      const dueText = due ? 'ready now' : `unlocks ${fmtCountdown(c.nextReviewTs-now)} (by 11:59pm)`;
       cardEl.innerHTML = `<div>${c.text}</div><div style="font-size:.68rem;color:#888;">${dueText}</div>
         <div class="actions">
           <button class="btn small green" ${due?'':'disabled'} onclick="reviewCard(${c.id},true)">Got it</button>
           <button class="btn small red" ${due?'':'disabled'} onclick="reviewCard(${c.id},false)">Still hard</button>
+          <button class="btn small ghost" onclick="deleteLeitnerCard(${c.id})">Delete</button>
         </div>
         ${due?'':`<div class="wait">Locked until the review interval passes</div>`}`;
       col.appendChild(cardEl);
@@ -838,10 +901,11 @@ document.getElementById('leitnerAddBtn').addEventListener('click', ()=>{
   if(!text) return;
   const box = parseInt(document.getElementById('leitnerBoxSelect').value)||1;
   const now = Date.now();
-  data.leitner[box].push({ id: ++data.leitnerSeq, text, box, lastReviewTs: now, nextReviewTs: now + INTERVALS[box]*DAY_MS });
+  data.leitner[box].push({ id: ++data.leitnerSeq, text, box, lastReviewTs: now, nextReviewTs: nextReviewEndOfDay(INTERVALS[box]) });
   input.value='';
   awardXP(3,false);
   renderBoxes();
+  scheduleSave();
 });
 function reviewCard(id, correct){
   const now = Date.now();
@@ -852,13 +916,22 @@ function reviewCard(id, correct){
       if(now < card.nextReviewTs) return; // still locked — guards against XP farming
       data.leitner[b].splice(idx,1);
       const newBox = correct ? Math.min(card.box+1,5) : 1;
-      card.box = newBox; card.lastReviewTs = now; card.nextReviewTs = now + INTERVALS[newBox]*DAY_MS;
+      card.box = newBox; card.lastReviewTs = now; card.nextReviewTs = nextReviewEndOfDay(INTERVALS[newBox]);
       data.leitner[newBox].push(card);
       awardXP(5,true);
       break;
     }
   }
   renderBoxes();
+  scheduleSave();
+}
+function deleteLeitnerCard(id){
+  for(let b=1;b<=5;b++){
+    const idx = data.leitner[b].findIndex(c=>c.id===id);
+    if(idx>-1){ data.leitner[b].splice(idx,1); break; }
+  }
+  renderBoxes();
+  scheduleSave();
 }
 setInterval(renderBoxes, 30000);
 
@@ -899,7 +972,13 @@ function updateQCountTip(){
   document.getElementById('qAddBtn').disabled = termCount>=MAX_QUESTIONS_PER_TERM && !qEditingId;
 }
 
+function syncQTermSelect(){
+  const sel = document.getElementById('qTermSelect');
+  if(!sel) return;
+  sel.innerHTML = [1,2,3,4].map(t=>`<option value="${t}" ${t===qActiveTerm?'selected':''}>Term ${t}</option>`).join('');
+}
 function renderQTypeFields(prefill){
+  syncQTermSelect();
   const type = document.getElementById('qType').value;
   const wrap = document.getElementById('qTypeFields');
   if(type==='mcq'){
@@ -927,6 +1006,15 @@ function renderQTypeFields(prefill){
   }
 }
 document.getElementById('qType').addEventListener('change', ()=>renderQTypeFields());
+document.getElementById('qTermSelect').addEventListener('change', (e)=>{
+  const t = parseInt(e.target.value)||1;
+  if(t !== qActiveTerm){
+    qActiveTerm = t; qEditingId = null;
+    renderQTermTabs(); updateQCountTip(); renderQList();
+    // keep the prompt/type the user was mid-typing; just refresh the term-dependent bits
+    syncQTermSelect();
+  }
+});
 
 document.getElementById('qImageInput').addEventListener('change', (e)=>{
   const file = e.target.files[0];
@@ -1218,6 +1306,13 @@ searchInput.addEventListener('input', ()=>{
         results.push({type:'Basic note', label:`${nb.name} · p.${pg}`, preview: text.slice(0,60), action:()=>{}});
     });
   });
+  // BUGFIX: formal notebooks were never searched at all — add them too.
+  (data.formalNotebooks||[]).forEach(nb=>{
+    Object.entries(nb.pages).forEach(([pg, text])=>{
+      if(text && text.toLowerCase().includes(q))
+        results.push({type:'Formal note', label:`${nb.name} · p.${pg}`, preview: text.slice(0,60), action:()=>{}});
+    });
+  });
   // flashcards
   data.flashcardStacks.forEach(st=>{
     st.cards.forEach(c=>{
@@ -1233,6 +1328,16 @@ searchInput.addEventListener('input', ()=>{
           results.push({type:'Question', label:`${s.name} T${t}: ${q2.prompt.slice(0,50)}`, preview:`Difficulty ${q2.difficulty}`, action:()=>{}});
       });
     });
+  });
+  // BUGFIX: tasks/deadlines were never searched — add them.
+  (data.tasks||[]).forEach(t=>{
+    if(t.title && t.title.toLowerCase().includes(q))
+      results.push({type:'Task', label:t.title, preview:`Due ${t.effectiveDue}`, action:()=>{}});
+  });
+  // BUGFIX: mind map bubbles were never searched — add them.
+  (data.bubbles||[]).forEach(b=>{
+    if(b.text && b.text.toLowerCase().includes(q))
+      results.push({type:'Mind map', label:b.text.slice(0,50), preview:'Mind map bubble', action:()=>{}});
   });
   if(results.length===0){
     searchDropdown.innerHTML='<div class="search-result" style="color:#aaa;">No results</div>';
@@ -1296,72 +1401,104 @@ let lbMode = 'friends';
 document.getElementById('lbFriendsBtn').addEventListener('click', ()=>{ lbMode='friends'; document.getElementById('lbFriendsBtn').classList.add('active'); document.getElementById('lbGlobalBtn').classList.remove('active'); renderLeaderboard(); });
 document.getElementById('lbGlobalBtn').addEventListener('click', ()=>{ lbMode='global'; document.getElementById('lbGlobalBtn').classList.add('active'); document.getElementById('lbFriendsBtn').classList.remove('active'); renderLeaderboard(); });
 
+// BUGFIX (friend system rewrite): friend requests used to be stuffed inside
+// each user's private app_data JSON, and lookups queried profiles directly —
+// both blocked by Row Level Security for anyone who isn't you, which is
+// exactly why adding a friend by name always said "no user exists" even
+// though they did. The setup SQL already defines a proper public.friends
+// table with correct RLS (you can see rows involving you) plus the safe
+// public.leaderboard view for name lookups — this rewires the UI to use them.
+let friendsCache = { accepted: [], incoming: [] };
+
+async function loadFriendsData(){
+  try{
+    const { data: rows } = await sb.from('friends').select('*').or(`user_id.eq.${currentUserId},friend_id.eq.${currentUserId}`);
+    const accepted = [], incoming = [];
+    (rows||[]).forEach(r=>{
+      if(r.status==='accepted'){
+        const otherId = r.user_id===currentUserId ? r.friend_id : r.user_id;
+        accepted.push(otherId);
+      } else if(r.status==='pending' && r.friend_id===currentUserId){
+        incoming.push(r.user_id); // someone else sent me a request
+      }
+    });
+    // look up display names for everyone involved via the safe public view
+    const ids = [...new Set([...accepted, ...incoming])];
+    let names = {};
+    if(ids.length){
+      const { data: profiles } = await sb.from('leaderboard').select('id,name,username').in('id', ids);
+      (profiles||[]).forEach(p=>{ names[p.id] = p.name || p.username || 'Student'; });
+    }
+    friendsCache = { accepted: accepted.map(id=>({id, name:names[id]||'Student'})), incoming: incoming.map(id=>({id, name:names[id]||'Student'})) };
+    data.friends = accepted; // keep in sync for leaderboard "friends" mode
+  }catch(e){ console.error('Could not load friends', e); }
+}
+
 document.getElementById('friendAddBtn').addEventListener('click', async ()=>{
   const name = document.getElementById('friendInput').value.trim();
   if(!name){ showToast('Enter a display name.'); return; }
-  // look up by name in profiles
   try{
-    const { data: profiles } = await sb.from('profiles').select('id,name,app_data').ilike('name', name);
+    const { data: profiles } = await sb.from('leaderboard').select('id,name,username').or(`name.ilike.${name},username.ilike.${name}`);
     if(!profiles || profiles.length===0){ showToast('No user found with that display name.'); return; }
     const target = profiles[0];
     if(target.id === currentUserId){ showToast("That's you!"); return; }
-    if(data.friends.includes(target.id)){ showToast('Already friends.'); return; }
-    // push a friend request into their profile's app_data
-    const theirData = Object.assign(newUserData(), target.app_data||{});
-    if(!theirData.friendRequests) theirData.friendRequests=[];
-    if(theirData.friendRequests.some(r=>r.from===currentUserId)){ showToast('Request already sent.'); return; }
-    theirData.friendRequests.push({ from: currentUserId, fromName: data.displayName||document.getElementById('userName').textContent, ts: Date.now() });
-    await sb.from('profiles').update({ app_data: theirData }).eq('id', target.id);
-    showToast(`Friend request sent to ${target.name}!`);
+    if(friendsCache.accepted.some(f=>f.id===target.id)){ showToast('Already friends.'); return; }
+    const { error } = await sb.from('friends').insert({ user_id: currentUserId, friend_id: target.id, status: 'pending' });
+    if(error){ if(error.code==='23505'){ showToast('Request already sent.'); } else { throw error; } return; }
+    showToast(`Friend request sent to ${target.name||target.username}!`);
     document.getElementById('friendInput').value='';
   }catch(e){ showToast('Could not send request — try again.'); }
 });
 
 async function acceptFriend(fromId, fromName){
-  data.friends.push(fromId);
-  data.friendRequests = data.friendRequests.filter(r=>r.from!==fromId);
-  // also add ourselves to their friends list
   try{
-    const { data: theirProfile } = await sb.from('profiles').select('app_data').eq('id',fromId).single();
-    if(theirProfile){
-      const theirData = Object.assign(newUserData(), theirProfile.app_data||{});
-      if(!theirData.friends.includes(currentUserId)) theirData.friends.push(currentUserId);
-      await sb.from('profiles').update({ app_data: theirData }).eq('id', fromId);
-    }
-  }catch(e){}
-  scheduleSave();
+    await sb.from('friends').update({ status: 'accepted' }).eq('user_id', fromId).eq('friend_id', currentUserId);
+  }catch(e){ showToast('Could not accept — try again.'); return; }
+  await loadFriendsData();
   renderFriends();
   showToast(`You and ${fromName} are now friends!`);
 }
-function declineFriend(fromId){
-  data.friendRequests = data.friendRequests.filter(r=>r.from!==fromId);
-  scheduleSave(); renderFriends();
+async function declineFriend(fromId){
+  try{ await sb.from('friends').delete().eq('user_id', fromId).eq('friend_id', currentUserId); }catch(e){}
+  await loadFriendsData();
+  renderFriends();
 }
 async function removeFriend(id){
-  data.friends = data.friends.filter(f=>f!==id);
-  scheduleSave(); renderFriends();
+  try{
+    await sb.from('friends').delete().eq('user_id', currentUserId).eq('friend_id', id);
+    await sb.from('friends').delete().eq('user_id', id).eq('friend_id', currentUserId);
+  }catch(e){}
+  await loadFriendsData();
+  renderFriends();
 }
 
 function renderFriends(){
   const reqWrap = document.getElementById('friendRequests');
-  const reqs = data.friendRequests||[];
-  reqWrap.innerHTML = reqs.length ? reqs.map(r=>`<div class="friend-row"><span>${r.fromName||r.from}</span><div style="display:flex;gap:6px;"><button class="btn small green" onclick="acceptFriend('${r.from}','${r.fromName||r.from}')">Accept</button><button class="btn small red" onclick="declineFriend('${r.from}')">Decline</button></div></div>`).join('') : '<p style="color:#aaa;font-size:.82rem;">No pending requests.</p>';
+  const reqs = friendsCache.incoming||[];
+  reqWrap.innerHTML = reqs.length ? reqs.map(r=>`<div class="friend-row"><span>${r.name.replace(/</g,'&lt;')}</span><div style="display:flex;gap:6px;"><button class="btn small green" onclick="acceptFriend('${r.id}','${r.name.replace(/'/g,"\\'")}')">Accept</button><button class="btn small red" onclick="declineFriend('${r.id}')">Decline</button></div></div>`).join('') : '<p style="color:#aaa;font-size:.82rem;">No pending requests.</p>';
   const friendWrap = document.getElementById('friendList');
-  friendWrap.innerHTML = (data.friends||[]).length ? (data.friends||[]).map(id=>`<div class="friend-row"><span class="mono" style="font-size:.75rem;">${id.slice(0,8)}…</span><button class="btn small ghost" onclick="removeFriend('${id}')">Remove</button></div>`).join('') : '<p style="color:#aaa;font-size:.82rem;">No friends yet.</p>';
+  const friends = friendsCache.accepted||[];
+  friendWrap.innerHTML = friends.length ? friends.map(f=>`<div class="friend-row"><span>${f.name.replace(/</g,'&lt;')}</span><button class="btn small ghost" onclick="removeFriend('${f.id}')">Remove</button></div>`).join('') : '<p style="color:#aaa;font-size:.82rem;">No friends yet.</p>';
 }
 
 async function renderLeaderboard(){
   const wrap = document.getElementById('leaderboard');
   wrap.innerHTML = '<p style="color:#aaa;font-size:.82rem;">Loading…</p>';
   try{
+    // BUGFIX: this used to query profiles.app_data directly, which Row Level
+    // Security blocks for anyone else's row (each user can only see their own
+    // profile) — so it silently only ever returned yourself. The setup SQL
+    // already defines a safe `public.leaderboard` view (id, username, name,
+    // xp, level — never the private app_data) that's readable by everyone
+    // signed in. Use that instead.
     let rows = [];
     if(lbMode==='global'){
-      const { data: profiles } = await sb.from('profiles').select('id,name,app_data').limit(50);
-      rows = (profiles||[]).map(p=>({ id:p.id, name:p.name||'Student', xp:(p.app_data&&p.app_data.xp)||0, level:(p.app_data&&p.app_data.level)||1 }));
+      const { data: profiles } = await sb.from('leaderboard').select('id,name,xp,level').order('xp',{ascending:false}).limit(50);
+      rows = (profiles||[]).map(p=>({ id:p.id, name:p.name||'Student', xp:p.xp||0, level:p.level||1 }));
     } else {
       const ids = [...(data.friends||[]), currentUserId];
-      const { data: profiles } = await sb.from('profiles').select('id,name,app_data').in('id', ids);
-      rows = (profiles||[]).map(p=>({ id:p.id, name:p.name||'Student', xp:(p.app_data&&p.app_data.xp)||0, level:(p.app_data&&p.app_data.level)||1 }));
+      const { data: profiles } = await sb.from('leaderboard').select('id,name,xp,level').in('id', ids);
+      rows = (profiles||[]).map(p=>({ id:p.id, name:p.name||'Student', xp:p.xp||0, level:p.level||1 }));
     }
     rows.sort((a,b)=>b.xp-a.xp);
     wrap.innerHTML = rows.length ? rows.map((r,i)=>`<div class="lb-row ${r.id===currentUserId?'lb-me':''}"><span class="lb-rank">${i+1}</span><span class="lb-name">${r.name.replace(/</g,'&lt;')}${r.id===currentUserId?' (you)':''}</span><span class="lb-xp">Lv ${r.level} · ${r.xp} XP</span></div>`).join('') : '<p style="color:#aaa;font-size:.82rem;">Nobody to show yet.</p>';
@@ -1394,10 +1531,7 @@ function sharePracticeTest(id){
   if(!test) return;
   const subj = data.questionLog.subjects[test.subjectIndex];
   const questions = test.questionIds.map(qid=>{ for(const t of [1,2,3,4]){ const found=subj.terms[t].find(q=>q.id===qid); if(found) return found; } return null; }).filter(Boolean);
-  const payload = { name: test.name, questions };
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-  document.getElementById('shareCode').textContent = encoded;
-  document.getElementById('shareModal').style.display='flex';
+  shareViaTable('practice_test', test.name, { name: test.name, questions });
 }
 
 /* ===================== MISTAKE LOG — MANUAL ADD ===================== */
@@ -1561,7 +1695,23 @@ document.getElementById('calNextBtn').addEventListener('click', ()=>{ calMonth++
 document.getElementById('calTodayBtn').addEventListener('click', ()=>{ calYear=new Date().getFullYear(); calMonth=new Date().getMonth(); calSelectedDay=null; renderCalendar(); });
 
 /* ===================== FULL RENDER ON LOGIN ===================== */
-function renderAll(){
+// BUGFIX: renderAll() used to call renderQuestionLog(), which didn't exist —
+// that threw a ReferenceError partway through renderAll() and silently
+// skipped everything after it (friends, leaderboard, calendar, mistake-log
+// fields, dark mode, display name). Defining it properly fixes all of those
+// "only works after I switch tabs" symptoms in one shot.
+function renderQuestionLog(){
+  renderQSubjectTabs();
+  renderQTermTabs();
+  updateQCountTip();
+  renderQList();
+  resetQuestionForm();
+  renderPtSubjectSelect();
+  renderPtList();
+  renderMistakeList();
+}
+
+async function renderAll(){
   renderStats();
   renderHome();
   renderTasks();
@@ -1573,6 +1723,7 @@ function renderAll(){
   loadFeynmanDraft();
   renderFeynmanStatus();
   renderQuestionLog();
+  await loadFriendsData();
   renderFriends();
   renderLeaderboard();
   renderCalendar();
