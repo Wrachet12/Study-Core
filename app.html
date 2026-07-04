@@ -174,6 +174,7 @@
     <div class="pillgroup" style="margin-top:4px;">
       <button class="btn amber" id="flashAddBtn">+ Add card</button>
       <button class="btn ghost small" id="flashShareBtn">🔗 Share stack</button>
+      <button class="btn ghost small" id="flashImportBtn">📥 Import stack</button>
     </div>
     <div id="flashViewer" style="margin-top:16px;"></div>
   </div>
@@ -409,6 +410,7 @@
       </div>
     </div>
     <button class="btn amber" id="ptCreateBtn" style="margin-top:6px;">+ Create practice test</button>
+    <button class="btn ghost small" id="ptImportBtn" style="margin-top:6px;">📥 Import test</button>
     <div id="ptList" style="margin-top:16px;"></div>
     <div id="ptRunner" style="margin-top:16px;"></div>
   </div>
@@ -479,25 +481,6 @@
     </div>
     <div id="leaderboard"></div>
   </div>
-
-  <!-- Share modal for flashcards -->
-  <div id="shareModal" class="modal-overlay" style="display:none;">
-    <div class="modal-card">
-      <h2>Share flashcard stack</h2>
-      <p style="font-size:.85rem;color:#555;">Anyone with this code can import a copy of this stack.</p>
-      <div style="background:#f4f0e4;padding:12px;border-radius:8px;font-family:monospace;word-break:break-all;font-size:.82rem;" id="shareCode"></div>
-      <div style="margin-top:14px;">
-        <button class="btn amber" id="copyShareCodeBtn">Copy code</button>
-        <button class="btn ghost" id="closeShareModal" style="margin-left:8px;">Close</button>
-      </div>
-      <hr style="margin:18px 0;">
-      <h3>Import a stack</h3>
-      <div class="row" style="align-items:flex-end;">
-        <div style="flex:3"><input id="importCodeInput" placeholder="Paste share code"></div>
-        <div style="flex:1"><button class="btn blue" id="importStackBtn" style="width:100%">Import</button></div>
-      </div>
-    </div>
-  </div>
 </section>
 
 <!-- CALENDAR TAB -->
@@ -519,6 +502,34 @@
 </div><!-- /appShell -->
 
 <div id="toastContainer"></div>
+
+<!-- Share modal — title is set dynamically by JS depending on what's being shared -->
+<div id="shareModal" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <h2 id="shareModalTitle">Share</h2>
+    <p style="font-size:.85rem;color:#555;">Anyone with this code can import a copy.</p>
+    <div style="background:#f4f0e4;padding:12px;border-radius:8px;font-family:monospace;word-break:break-all;font-size:.82rem;" id="shareCode"></div>
+    <div style="margin-top:14px;">
+      <button class="btn amber" id="copyShareCodeBtn">Copy code</button>
+      <button class="btn ghost" id="closeShareModal" style="margin-left:8px;">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import modal — separate from sharing, opened from its own button on the
+     Flashcards and Practice Test screens. Auto-detects flashcards vs practice
+     test from the code itself. -->
+<div id="importModal" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <h2 id="importModalTitle">Import shared content</h2>
+    <p style="font-size:.85rem;color:#555;">Paste a share code from a friend.</p>
+    <div class="row" style="align-items:flex-end;">
+      <div style="flex:3"><input id="importCodeInput" placeholder="Paste share code"></div>
+      <div style="flex:1"><button class="btn blue" id="importStackBtn" style="width:100%">Import</button></div>
+    </div>
+    <div style="margin-top:14px;"><button class="btn ghost" id="closeImportModal">Close</button></div>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="config.js"></script>

@@ -645,7 +645,9 @@ document.getElementById('flashStackName').addEventListener('input', (e)=>{
 // public.shared_decks table for exactly this. Open the modal instantly in a
 // "generating…" state, then do the (fast) DB insert in the background —
 // and the resulting code is short and works across devices.
+const shareKindLabels = { flashcards: 'Share flashcard stack', practice_test: 'Share practice test' };
 async function shareViaTable(kind, title, payload){
+  document.getElementById('shareModalTitle').textContent = shareKindLabels[kind] || 'Share';
   document.getElementById('shareCode').textContent = 'Generating code…';
   document.getElementById('shareModal').style.display='flex';
   try{
@@ -663,12 +665,26 @@ async function shareViaTable(kind, title, payload){
 }
 document.getElementById('flashShareBtn').addEventListener('click', ()=>{
   const stack = data.flashcardStacks[flashActiveStack];
+  if(!stack.cards.length){ showToast('This stack has no cards to share yet.'); return; }
   shareViaTable('flashcards', stack.name, { name: stack.name, cards: stack.cards });
 });
 document.getElementById('closeShareModal').addEventListener('click', ()=>{ document.getElementById('shareModal').style.display='none'; });
 document.getElementById('copyShareCodeBtn').addEventListener('click', ()=>{
   navigator.clipboard.writeText(document.getElementById('shareCode').textContent).then(()=>showToast('Code copied!'));
 });
+
+// Import is its own modal now — separate from sharing — opened from a
+// dedicated button on the Flashcards screen and the Practice Tests screen.
+document.getElementById('flashImportBtn').addEventListener('click', ()=>{
+  document.getElementById('importModalTitle').textContent = 'Import a flashcard stack';
+  document.getElementById('importModal').style.display='flex';
+});
+document.getElementById('ptImportBtn').addEventListener('click', ()=>{
+  document.getElementById('importModalTitle').textContent = 'Import a practice test';
+  document.getElementById('importModal').style.display='flex';
+});
+document.getElementById('closeImportModal').addEventListener('click', ()=>{ document.getElementById('importModal').style.display='none'; });
+
 document.getElementById('importStackBtn').addEventListener('click', async ()=>{
   const code = document.getElementById('importCodeInput').value.trim().toUpperCase();
   if(!code){ showToast('Enter a share code.'); return; }
@@ -678,11 +694,11 @@ document.getElementById('importStackBtn').addEventListener('click', async ()=>{
     const deck = rows[0];
     if(deck.kind === 'flashcards'){
       const payload = deck.payload;
-      if(!payload.cards || !Array.isArray(payload.cards)) throw new Error('Invalid deck');
+      if(!payload.cards || !Array.isArray(payload.cards) || payload.cards.length===0){ showToast('This shared stack has no cards.'); return; }
       const emptyStack = data.flashcardStacks.findIndex(s=>s.cards.length===0);
       const target = emptyStack>-1 ? emptyStack : 0;
       data.flashcardStacks[target].name = payload.name || 'Imported';
-      data.flashcardStacks[target].cards = payload.cards.map(c=>({...c, id:data.flashcardSeq++}));
+      data.flashcardStacks[target].cards = payload.cards.map(c=>({...c, id: (data.flashcardSeq = (data.flashcardSeq||0)+1)}));
       flashActiveStack = target; flashActiveCard=0; flashFlipped=false;
       renderFlashAll();
       showToast(`Imported "${payload.name}" into Stack ${target+1}.`);
@@ -691,14 +707,20 @@ document.getElementById('importStackBtn').addEventListener('click', async ()=>{
       // shared modal only ever checked for a `.cards` array, so a practice
       // test's `.questions` payload silently failed with "Invalid share code".
       const payload = deck.payload;
-      if(!payload.questions || !Array.isArray(payload.questions)) throw new Error('Invalid deck');
+      if(!payload.questions || !Array.isArray(payload.questions) || payload.questions.length===0){ showToast('This shared test has no questions.'); return; }
       const subj = data.questionLog.subjects[qActiveSubject];
+      // BUGFIX: id generation used `(data.questionLog.questionSeq = (data.questionLog.questionSeq||0)+1)`, which
+      // becomes NaN if that counter is ever missing/undefined on an
+      // account — every imported question then got a NaN id, so the test
+      // was created with a name and term but its questions could never be
+      // found again ("all questions in this test have been deleted").
+      // This form is safe even if the counter was never initialized.
       const newIds = payload.questions.map(q=>{
-        const newQ = {...q, id: ++data.questionLog.questionSeq};
+        const newQ = {...q, id: (data.questionLog.questionSeq = (data.questionLog.questionSeq||0)+1)};
         subj.terms[qActiveTerm].push(newQ);
         return newQ.id;
       });
-      data.questionLog.practiceTests.push({ id: ++data.questionLog.testSeq, name: payload.name||'Imported test', subjectIndex: qActiveSubject, term: qActiveTerm, questionIds: newIds });
+      data.questionLog.practiceTests.push({ id: (data.questionLog.testSeq = (data.questionLog.testSeq||0)+1), name: payload.name||'Imported test', subjectIndex: qActiveSubject, term: qActiveTerm, questionIds: newIds });
       renderQList(); renderPtList(); updateQCountTip();
       showToast(`Imported practice test "${payload.name}" into ${subj.name}, Term ${qActiveTerm}.`);
     } else {
@@ -706,7 +728,7 @@ document.getElementById('importStackBtn').addEventListener('click', async ()=>{
     }
     scheduleSave();
     document.getElementById('importCodeInput').value='';
-    document.getElementById('shareModal').style.display='none';
+    document.getElementById('importModal').style.display='none';
   }catch(e){ showToast('Invalid share code — check and try again.'); }
 });
 document.getElementById('flashAddBtn').addEventListener('click', ()=>{
@@ -716,7 +738,7 @@ document.getElementById('flashAddBtn').addEventListener('click', ()=>{
   const back = document.getElementById('flashBack').value.trim();
   const category = document.getElementById('flashCategory').value.trim();
   if(!front || !back){ showToast('Fill in both the front and back of the card.'); return; }
-  stack.cards.push({ id: data.flashcardSeq++, front, back, category });
+  stack.cards.push({ id: (data.flashcardSeq = (data.flashcardSeq||0)+1), front, back, category });
   document.getElementById('flashFront').value=''; document.getElementById('flashBack').value=''; document.getElementById('flashCategory').value='';
   flashActiveCard = stack.cards.length-1; flashFlipped=false;
   renderFlashCount(); renderFlashViewer();
@@ -746,7 +768,7 @@ function createBubbleEl(entry){
 }
 function addBubble(x,y,text){
   if(!data) return;
-  const entry = { id: data.bubbleSeq++, x: Math.max(0,x-60), y: Math.max(0,y-25), text: text||'New idea', color: bubbleColors[Math.floor(Math.random()*bubbleColors.length)] };
+  const entry = { id: (data.bubbleSeq = (data.bubbleSeq||0)+1), x: Math.max(0,x-60), y: Math.max(0,y-25), text: text||'New idea', color: bubbleColors[Math.floor(Math.random()*bubbleColors.length)] };
   data.bubbles.push(entry);
   createBubbleEl(entry);
   awardXP(2,false);
@@ -901,7 +923,7 @@ document.getElementById('leitnerAddBtn').addEventListener('click', ()=>{
   if(!text) return;
   const box = parseInt(document.getElementById('leitnerBoxSelect').value)||1;
   const now = Date.now();
-  data.leitner[box].push({ id: ++data.leitnerSeq, text, box, lastReviewTs: now, nextReviewTs: nextReviewEndOfDay(INTERVALS[box]) });
+  data.leitner[box].push({ id: (data.leitnerSeq = (data.leitnerSeq||0)+1), text, box, lastReviewTs: now, nextReviewTs: nextReviewEndOfDay(INTERVALS[box]) });
   input.value='';
   awardXP(3,false);
   renderBoxes();
@@ -1067,7 +1089,7 @@ document.getElementById('qAddBtn').addEventListener('click', ()=>{
     if(q){ Object.assign(q, {type, prompt, category, difficulty, options, answer, image: qPendingImage}); }
   } else {
     if(terms[qActiveTerm].length >= MAX_QUESTIONS_PER_TERM){ showToast(`Term ${qActiveTerm} is full at ${MAX_QUESTIONS_PER_TERM} questions.`); return; }
-    terms[qActiveTerm].push({ id: ++data.questionLog.questionSeq, type, prompt, category, difficulty, options, answer, image: qPendingImage });
+    terms[qActiveTerm].push({ id: (data.questionLog.questionSeq = (data.questionLog.questionSeq||0)+1), type, prompt, category, difficulty, options, answer, image: qPendingImage });
     awardXP(2,false);
   }
   resetQuestionForm();
@@ -1136,7 +1158,7 @@ document.getElementById('ptCreateBtn').addEventListener('click', ()=>{
   const questionIds = subj.terms[term].map(q=>q.id);
   if(questionIds.length===0){ showToast('That term has no questions yet.'); return; }
   const name = document.getElementById('ptName').value.trim() || `${subj.name} · Term ${term} test`;
-  data.questionLog.practiceTests.push({ id: ++data.questionLog.testSeq, name, subjectIndex, term, questionIds, createdAt: Date.now() });
+  data.questionLog.practiceTests.push({ id: (data.questionLog.testSeq = (data.questionLog.testSeq||0)+1), name, subjectIndex, term, questionIds, createdAt: Date.now() });
   document.getElementById('ptName').value='';
   awardXP(3,false);
   renderPtList();
@@ -1194,7 +1216,7 @@ function ptComputeResults(){
     if(q.type==='mcq') userDisplay = (ptRunnerState.answers[i]!=null) ? `${['A','B','C','D'][ptRunnerState.answers[i]]}. ${q.options[ptRunnerState.answers[i]]}` : '(no answer)';
     else userDisplay = ptRunnerState.answers[i] || '(no answer)';
     data.questionLog.mistakes.push({
-      id: ++data.questionLog.mistakeSeq, ts: Date.now(), subjectName: ptRunnerState.subjectName, term: ptRunnerState.test.term,
+      id: (data.questionLog.mistakeSeq = (data.questionLog.mistakeSeq||0)+1), ts: Date.now(), subjectName: ptRunnerState.subjectName, term: ptRunnerState.test.term,
       prompt: q.prompt, type: q.type, correctAnswer: correctDisplay, userAnswer: userDisplay, explanation: ''
     });
   });
@@ -1295,50 +1317,148 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
 /* ===================== SEARCH BAR ===================== */
 const searchInput = document.getElementById('globalSearch');
 const searchDropdown = document.getElementById('searchResults');
+// Jump to any tab / subtab / qsubtab, then optionally scroll to a specific
+// element once it's visible. Used by every clickable search result below.
+function navTo(tab, opts={}){
+  document.querySelector(`.tab[data-tab="${tab}"]`)?.click();
+  if(opts.subtab) document.querySelector(`.subtab[data-sub="${opts.subtab}"]`)?.click();
+  if(opts.qsubtab) document.querySelector(`.qsubtab[data-qsub="${opts.qsubtab}"]`)?.click();
+  if(opts.after) opts.after();
+  if(opts.scrollTo){
+    setTimeout(()=>{ document.getElementById(opts.scrollTo)?.scrollIntoView({behavior:'smooth', block:'start'}); }, 30);
+  }
+  searchDropdown.classList.remove('open');
+  searchInput.value = '';
+}
+
+// Every tab/section is directly searchable by name, even with no content
+// match, so typing e.g. "Feynman" or "Leaderboard" jumps straight there.
+const navSearchItems = [
+  { label:'Today', preview:'Your daily overview', run:()=>navTo('home') },
+  { label:'Study', preview:'Mind map, Leitner box, flashcards', run:()=>navTo('study') },
+  { label:'Mind map', preview:'Visual brainstorming canvas', run:()=>navTo('study',{scrollTo:'mindmapCanvas'}) },
+  { label:'Leitner box', preview:'Spaced-repetition review boxes', run:()=>navTo('study',{scrollTo:'boxesWrap'}) },
+  { label:'Flashcards', preview:'5 stacks, 150 cards each', run:()=>navTo('study',{scrollTo:'flashStackTabs'}) },
+  { label:'Planner', preview:'Your assignments and deadlines', run:()=>navTo('planner') },
+  { label:'Add assignment', preview:'Add a new task to your planner', run:()=>navTo('planner',{scrollTo:'taskTitle'}) },
+  { label:'Timer', preview:'Pomodoro focus timer', run:()=>navTo('timer') },
+  { label:'Notes', preview:'Basic notes, formal notes, Feynman', run:()=>navTo('notes',{subtab:'basic'}) },
+  { label:'Basic notes', preview:'Quick freeform notes by subject', run:()=>navTo('notes',{subtab:'basic',scrollTo:'basic'}) },
+  { label:'Formal notes', preview:'Cornell-style notes by subject', run:()=>navTo('notes',{subtab:'formal',scrollTo:'formal'}) },
+  { label:'Feynman', preview:'Explain-it-simply worksheet', run:()=>navTo('notes',{subtab:'feynman',scrollTo:'feynman'}) },
+  { label:'Question log', preview:'Question bank, practice tests, mistakes', run:()=>navTo('qlog',{qsubtab:'qbank'}) },
+  { label:'Question bank', preview:'All your saved questions', run:()=>navTo('qlog',{qsubtab:'qbank',scrollTo:'qList'}) },
+  { label:'Practice test', preview:'Build and take practice tests', run:()=>navTo('qlog',{qsubtab:'qtests',scrollTo:'ptList'}) },
+  { label:'Mistake log', preview:'Questions you got wrong', run:()=>navTo('qlog',{qsubtab:'qmistakes',scrollTo:'mistakeList'}) },
+  { label:'Friends', preview:'Add and manage friends', run:()=>navTo('social') },
+  { label:'Leaderboard', preview:'See where you rank', run:()=>navTo('social',{scrollTo:'leaderboard'}) },
+  { label:'Calendar', preview:'Monthly view of tasks and reviews', run:()=>navTo('calendar') },
+];
+
 searchInput.addEventListener('input', ()=>{
   const q = searchInput.value.trim().toLowerCase();
   if(q.length < 2){ searchDropdown.classList.remove('open'); return; }
   const results = [];
-  // basic notebook pages
-  data.basicNotebooks.forEach(nb=>{
+
+  // section/tab names — matched first so navigating is always fast
+  navSearchItems.forEach(item=>{
+    if(item.label.toLowerCase().includes(q))
+      results.push({type:'Go to', label:item.label, preview:item.preview, action:item.run});
+  });
+
+  // named items — flashcard stacks, notebook subjects, practice tests
+  data.flashcardStacks.forEach((st,i)=>{
+    if(st.name && st.name.toLowerCase().includes(q))
+      results.push({type:'Flashcards', label:st.name, preview:`${st.cards.length} card(s)`, action:()=>{
+        flashActiveStack=i; flashActiveCard=0; flashFlipped=false; renderFlashAll();
+        navTo('study',{scrollTo:'flashStackTabs'});
+      }});
+  });
+  data.basicNotebooks.forEach((nb,i)=>{
+    if(nb.name && nb.name.toLowerCase().includes(q))
+      results.push({type:'Basic notes', label:nb.name, preview:'Jump to this subject', action:()=>{
+        basicActiveSubject=i; basicActivePage=1; renderBasicNotebooks();
+        navTo('notes',{subtab:'basic',scrollTo:'basic'});
+      }});
+  });
+  data.formalNotebooks.forEach((nb,i)=>{
+    if(nb.name && nb.name.toLowerCase().includes(q))
+      results.push({type:'Formal notes', label:nb.name, preview:'Jump to this subject', action:()=>{
+        formalActiveSubject=i; formalActivePage=1; renderFormalNotebooks();
+        navTo('notes',{subtab:'formal',scrollTo:'formal'});
+      }});
+  });
+  (data.questionLog.practiceTests||[]).forEach(t=>{
+    if(t.name && t.name.toLowerCase().includes(q))
+      results.push({type:'Practice test', label:t.name, preview:`${t.questionIds.length} question(s)`, action:()=>{
+        qActiveSubject=t.subjectIndex; qActiveTerm=t.term; qEditingId=null;
+        renderQSubjectTabs(); renderQTermTabs(); renderPtSubjectSelect(); renderPtList(); updateQCountTip();
+        navTo('qlog',{qsubtab:'qtests',scrollTo:'ptList'});
+      }});
+  });
+
+  // basic notebook page text
+  data.basicNotebooks.forEach((nb,i)=>{
     Object.entries(nb.pages).forEach(([pg, text])=>{
       if(text && text.toLowerCase().includes(q))
-        results.push({type:'Basic note', label:`${nb.name} · p.${pg}`, preview: text.slice(0,60), action:()=>{}});
+        results.push({type:'Basic note', label:`${nb.name} · p.${pg}`, preview: text.slice(0,60), action:()=>{
+          basicActiveSubject=i; basicActivePage=parseInt(pg); renderBasicNotebooks();
+          navTo('notes',{subtab:'basic',scrollTo:'basic'});
+        }});
     });
   });
-  // BUGFIX: formal notebooks were never searched at all — add them too.
-  (data.formalNotebooks||[]).forEach(nb=>{
-    Object.entries(nb.pages).forEach(([pg, text])=>{
-      if(text && text.toLowerCase().includes(q))
-        results.push({type:'Formal note', label:`${nb.name} · p.${pg}`, preview: text.slice(0,60), action:()=>{}});
+  // formal notebook pages — these are objects {terms, notes, summary}, not
+  // plain strings like basic notes, so search each field separately.
+  // BUGFIX: treating the whole page object as a string here threw a
+  // TypeError on every search (since almost every formal notebook has at
+  // least one page created), which silently killed the entire search —
+  // that's why it always said "No results" no matter what you typed.
+  data.formalNotebooks.forEach((nb,i)=>{
+    Object.entries(nb.pages).forEach(([pg, page])=>{
+      if(!page) return;
+      const combined = [page.terms, page.notes, page.summary].filter(Boolean).join(' ');
+      if(combined.toLowerCase().includes(q))
+        results.push({type:'Formal note', label:`${nb.name} · p.${pg}`, preview: combined.slice(0,60), action:()=>{
+          formalActiveSubject=i; formalActivePage=parseInt(pg); renderFormalNotebooks();
+          navTo('notes',{subtab:'formal',scrollTo:'formal'});
+        }});
     });
   });
-  // flashcards
-  data.flashcardStacks.forEach(st=>{
-    st.cards.forEach(c=>{
+  // flashcard front/back text
+  data.flashcardStacks.forEach((st,i)=>{
+    st.cards.forEach((c,ci)=>{
       if(c.front.toLowerCase().includes(q)||c.back.toLowerCase().includes(q))
-        results.push({type:'Flashcard', label:`${st.name}: ${c.front.slice(0,40)}`, preview:c.back.slice(0,50), action:()=>{}});
+        results.push({type:'Flashcard', label:`${st.name}: ${c.front.slice(0,40)}`, preview:c.back.slice(0,50), action:()=>{
+          flashActiveStack=i; flashActiveCard=ci; flashFlipped=false; renderFlashAll();
+          navTo('study',{scrollTo:'flashStackTabs'});
+        }});
     });
   });
   // questions
-  data.questionLog.subjects.forEach(s=>{
+  data.questionLog.subjects.forEach((s,si)=>{
     [1,2,3,4].forEach(t=>{
       s.terms[t].forEach(q2=>{
         if(q2.prompt.toLowerCase().includes(q))
-          results.push({type:'Question', label:`${s.name} T${t}: ${q2.prompt.slice(0,50)}`, preview:`Difficulty ${q2.difficulty}`, action:()=>{}});
+          results.push({type:'Question', label:`${s.name} T${t}: ${q2.prompt.slice(0,50)}`, preview:`Difficulty ${q2.difficulty}`, action:()=>{
+            qActiveSubject=si; qActiveTerm=t; qEditingId=null;
+            renderQSubjectTabs(); renderQTermTabs(); updateQCountTip(); renderQList();
+            navTo('qlog',{qsubtab:'qbank',scrollTo:'qList'});
+          }});
       });
     });
   });
-  // BUGFIX: tasks/deadlines were never searched — add them.
+  // tasks/deadlines
   (data.tasks||[]).forEach(t=>{
     if(t.title && t.title.toLowerCase().includes(q))
-      results.push({type:'Task', label:t.title, preview:`Due ${t.effectiveDue}`, action:()=>{}});
+      results.push({type:'Task', label:t.title, preview:`Due ${t.effectiveDue}`, action:()=>navTo('planner',{scrollTo:'taskList'})});
   });
-  // BUGFIX: mind map bubbles were never searched — add them.
+  // mind map bubbles
   (data.bubbles||[]).forEach(b=>{
     if(b.text && b.text.toLowerCase().includes(q))
-      results.push({type:'Mind map', label:b.text.slice(0,50), preview:'Mind map bubble', action:()=>{}});
+      results.push({type:'Mind map', label:b.text.slice(0,50), preview:'Mind map bubble', action:()=>navTo('study',{scrollTo:'mindmapCanvas'})});
   });
+
+  currentSearchResults = results;
   if(results.length===0){
     searchDropdown.innerHTML='<div class="search-result" style="color:#aaa;">No results</div>';
   } else {
@@ -1349,6 +1469,16 @@ searchInput.addEventListener('input', ()=>{
       </div>`).join('');
   }
   searchDropdown.classList.add('open');
+});
+// BUGFIX: search results were never actually clickable before — there was
+// no listener wired up at all, so `action` never ran no matter what you
+// clicked. This delegates clicks on any rendered result to its action.
+let currentSearchResults = [];
+searchDropdown.addEventListener('click', (e)=>{
+  const row = e.target.closest('.search-result[data-i]');
+  if(!row) return;
+  const r = currentSearchResults[parseInt(row.dataset.i)];
+  if(r && r.action) r.action();
 });
 document.addEventListener('click', (e)=>{
   if(!e.target.closest('.topbar-center')) searchDropdown.classList.remove('open');
@@ -1531,6 +1661,12 @@ function sharePracticeTest(id){
   if(!test) return;
   const subj = data.questionLog.subjects[test.subjectIndex];
   const questions = test.questionIds.map(qid=>{ for(const t of [1,2,3,4]){ const found=subj.terms[t].find(q=>q.id===qid); if(found) return found; } return null; }).filter(Boolean);
+  // BUGFIX: this used to upload whatever came out of the lookup above with
+  // no check — if it came out empty, you'd get a share code for an empty
+  // deck (looked fine on your end, but the person importing it would see a
+  // test with the right name/term and zero questions). Catch that here
+  // instead of silently sharing a broken deck.
+  if(questions.length === 0){ showToast('This test has no questions to share — its questions may have been deleted.'); return; }
   shareViaTable('practice_test', test.name, { name: test.name, questions });
 }
 
@@ -1584,7 +1720,7 @@ document.getElementById('mlAddBtn').addEventListener('click', ()=>{
     correctAnswer=document.getElementById('mlModelAnswer').value.trim();
   }
   data.questionLog.mistakes.push({
-    id:++data.questionLog.mistakeSeq, ts:Date.now(),
+    id:(data.questionLog.mistakeSeq = (data.questionLog.mistakeSeq||0)+1), ts:Date.now(),
     subjectName:data.questionLog.subjects[subjectIndex].name, term, prompt, type,
     correctAnswer, userAnswer, explanation:'', category, difficulty, image, manual:true
   });
