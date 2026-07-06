@@ -130,13 +130,20 @@
 <section id="study" class="panel">
   <div class="card">
     <h2>Mind map</h2>
-    <p style="font-size:.85rem;color:#555;">Double-click anywhere to drop a bubble. Turn on <strong>Connect</strong> then click two bubbles to draw a line.</p>
+    <p style="font-size:.85rem;color:#555;">Double-click anywhere to drop a bubble. Turn on <strong>Connect</strong> then click two bubbles to draw a line. 5 subject boards, each a big scrollable canvas.</p>
+    <div class="subject-tabs" id="mmSubjectTabs"></div>
+    <div class="row" style="align-items:flex-end;">
+      <div style="flex:2"><label>Subject name</label><input id="mmSubjectName" placeholder="Subject name"></div>
+    </div>
     <div class="pillgroup">
       <button class="btn small ghost" id="addBubbleBtn">+ Add bubble</button>
       <button class="btn small ghost" id="connectModeBtn">🔗 Connect</button>
-      <button class="btn small ghost" id="clearMapBtn">Clear map</button>
+      <button class="btn small ghost" id="clearMapBtn">Clear this board</button>
     </div>
-    <div id="mindmapCanvas"><svg class="map-lines" id="mapLines"></svg></div>
+    <div id="mindmapViewport">
+      <div id="mindmapCanvas"><svg class="map-lines" id="mapLines"></svg></div>
+    </div>
+    <p style="font-size:.72rem;color:#999;margin-top:4px;">Scroll or drag the scrollbars to explore the rest of the board.</p>
   </div>
 
   <div class="card">

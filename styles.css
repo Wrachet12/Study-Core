@@ -144,11 +144,14 @@ details summary{cursor:pointer;font-size:.8rem;color:#5b8aa8;font-weight:600;mar
 .feynman-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .feynman-grid textarea{min-height:90px;}
 
+#mindmapViewport{
+  width:100%;height:480px;overflow:auto;border:1px dashed #cfc7ad;border-radius:8px;background:#fffdf6;
+}
 #mindmapCanvas{
-  position:relative;width:100%;height:420px;background:
+  position:relative;width:2400px;height:1400px;background:
   repeating-linear-gradient(0deg,transparent,transparent 27px,#eee4c8 28px),
   repeating-linear-gradient(90deg,transparent,transparent 27px,#eee4c8 28px);
-  background-color:#fffdf6;border:1px dashed #cfc7ad;border-radius:8px;overflow:hidden;
+  background-color:#fffdf6;
 }
 .map-lines{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
 .bubble{position:absolute;min-width:110px;max-width:180px;padding:10px 14px;border-radius:16px;font-size:.82rem;font-weight:600;text-align:center;cursor:grab;user-select:none;box-shadow:0 3px 8px rgba(0,0,0,.15);line-height:1.25;}

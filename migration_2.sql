@@ -1,4 +1,4 @@
--- Stud Desk — migration 2: usernames, leaderboard, friends, sharing.
+-- StudyCore — migration 2: usernames, leaderboard, friends, sharing.
 -- Run this AFTER setup.sql, once, in Supabase SQL Editor → New query → Run.
 -- Safe to run on a project that already has the profiles table from setup.sql.
 

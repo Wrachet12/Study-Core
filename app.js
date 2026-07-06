@@ -12,7 +12,7 @@ function newUserData(){
   return {
     xp:0, level:1, streak:0, lastActiveDate:null,
     tasks:[], leitner:{1:[],2:[],3:[],4:[],5:[]}, leitnerSeq:0,
-    bubbles:[], connections:[], bubbleSeq:0,
+    mindmaps: [1,2,3,4,5].map(i => ({ name: `Subject ${i}`, bubbles: [], connections: [], bubbleSeq: 0 })),
     basicNotebooks: newNotebookSet(), formalNotebooks: newNotebookSet(),
     flashcardStacks: [1,2,3,4,5].map(i => ({ name: `Subject ${i}`, cards: [] })), flashcardSeq:0,
     feynman: { entries: [], countSinceUnlock:0, lockUntilTs:null, draft:{concept:'',explain:'',gaps:'',simplify:''} },
@@ -99,6 +99,15 @@ async function loadProfileAndEnter(userId, email){
   }
   currentUserId = userId;
   data = Object.assign(newUserData(), profile.app_data || {});
+  // One-time migration: earlier versions had a single flat mind map
+  // (data.bubbles/data.connections) instead of 5 subject boards. Fold any
+  // existing bubbles into Subject 1 so nothing gets lost.
+  const oldBubbles = profile.app_data && profile.app_data.bubbles;
+  if(Array.isArray(oldBubbles) && oldBubbles.length){
+    data.mindmaps[0].bubbles = oldBubbles;
+    data.mindmaps[0].connections = profile.app_data.connections || [];
+    data.mindmaps[0].bubbleSeq = profile.app_data.bubbleSeq || 0;
+  }
   document.getElementById('authOverlay').style.display='none';
   document.getElementById('appShell').style.display='block';
   document.getElementById('userName').textContent = profile.name || (email ? email.split('@')[0] : 'Student');
@@ -751,6 +760,8 @@ const svg = document.getElementById('mapLines');
 const bubbleColors = ['#FBE3E1','#FBF1DC','#E7F4EB','#E3EEF8','#F1E5F6'];
 let dragTarget=null, dragOffX=0, dragOffY=0, dragMoved=false;
 let connectMode=false, connectFirst=null;
+let mmActiveSubject = 0;
+function activeMM(){ return data.mindmaps[mmActiveSubject]; }
 
 function createBubbleEl(entry){
   const el = document.createElement('div');
@@ -768,14 +779,17 @@ function createBubbleEl(entry){
 }
 function addBubble(x,y,text){
   if(!data) return;
-  const entry = { id: (data.bubbleSeq = (data.bubbleSeq||0)+1), x: Math.max(0,x-60), y: Math.max(0,y-25), text: text||'New idea', color: bubbleColors[Math.floor(Math.random()*bubbleColors.length)] };
-  data.bubbles.push(entry);
+  const mm = activeMM();
+  const entry = { id: (mm.bubbleSeq = (mm.bubbleSeq||0)+1), x: Math.max(0,x-60), y: Math.max(0,y-25), text: text||'New idea', color: bubbleColors[Math.floor(Math.random()*bubbleColors.length)] };
+  mm.bubbles.push(entry);
   createBubbleEl(entry);
   awardXP(2,false);
+  scheduleSave();
 }
 function deleteBubble(id){
-  data.bubbles = data.bubbles.filter(b=>b.id!==id);
-  data.connections = data.connections.filter(c=>c.from!==id && c.to!==id);
+  const mm = activeMM();
+  mm.bubbles = mm.bubbles.filter(b=>b.id!==id);
+  mm.connections = mm.connections.filter(c=>c.from!==id && c.to!==id);
   const el = canvas.querySelector(`.bubble[data-id="${id}"]`);
   if(el) el.remove();
   renderLines();
@@ -821,7 +835,7 @@ function onDrag(e){
 function stopDrag(){
   if(dragTarget && data){
     const id = parseInt(dragTarget.dataset.id);
-    const entry = data.bubbles.find(b=>b.id===id);
+    const entry = activeMM().bubbles.find(b=>b.id===id);
     if(entry){ entry.x = dragTarget.offsetLeft; entry.y = dragTarget.offsetTop; }
     if(dragMoved) scheduleSave();
   }
@@ -830,15 +844,16 @@ function stopDrag(){
   document.removeEventListener('pointerup', stopDrag);
 }
 function toggleConnection(a,b){
-  const idx = data.connections.findIndex(c => (c.from===a&&c.to===b)||(c.from===b&&c.to===a));
-  if(idx>-1){ data.connections.splice(idx,1); } else { data.connections.push({from:a, to:b}); }
+  const mm = activeMM();
+  const idx = mm.connections.findIndex(c => (c.from===a&&c.to===b)||(c.from===b&&c.to===a));
+  if(idx>-1){ mm.connections.splice(idx,1); } else { mm.connections.push({from:a, to:b}); }
   renderLines();
   scheduleSave();
 }
 function renderLines(){
   if(!data) return;
   svg.innerHTML='';
-  data.connections.forEach(c=>{
+  activeMM().connections.forEach(c=>{
     const elA = canvas.querySelector(`.bubble[data-id="${c.from}"]`);
     const elB = canvas.querySelector(`.bubble[data-id="${c.to}"]`);
     if(!elA || !elB) return;
@@ -851,16 +866,32 @@ function renderLines(){
   });
 }
 function renderMindmap(){
+  renderSubjectTabs('mmSubjectTabs', data.mindmaps, mmActiveSubject, (i)=>{
+    mmActiveSubject = i; renderMindmap();
+  });
+  document.getElementById('mmSubjectName').value = activeMM().name;
   canvas.querySelectorAll('.bubble').forEach(b=>b.remove());
-  data.bubbles.forEach(entry=>createBubbleEl(entry));
+  activeMM().bubbles.forEach(entry=>createBubbleEl(entry));
   renderLines();
+  document.getElementById('mindmapViewport').scrollLeft = 0;
+  document.getElementById('mindmapViewport').scrollTop = 0;
 }
+document.getElementById('mmSubjectName').addEventListener('input', (e)=>{
+  activeMM().name = e.target.value || `Subject ${mmActiveSubject+1}`;
+  renderSubjectTabs('mmSubjectTabs', data.mindmaps, mmActiveSubject, (i)=>{ mmActiveSubject=i; renderMindmap(); });
+  scheduleSave();
+});
 canvas.addEventListener('dblclick', (e)=>{
   if(e.target !== canvas && e.target !== svg) return;
   const rect = canvas.getBoundingClientRect();
   addBubble(e.clientX-rect.left, e.clientY-rect.top);
 });
-document.getElementById('addBubbleBtn').addEventListener('click', ()=> addBubble(80+Math.random()*200, 60+Math.random()*200));
+document.getElementById('addBubbleBtn').addEventListener('click', ()=>{
+  const vp = document.getElementById('mindmapViewport');
+  // drop the new bubble roughly in the middle of whatever part of the
+  // (now much bigger) board you're currently scrolled to, not always top-left
+  addBubble(vp.scrollLeft + 80 + Math.random()*200, vp.scrollTop + 60 + Math.random()*200);
+});
 document.getElementById('connectModeBtn').addEventListener('click', (e)=>{
   connectMode = !connectMode;
   e.currentTarget.classList.toggle('active', connectMode);
@@ -872,7 +903,8 @@ document.getElementById('connectModeBtn').addEventListener('click', (e)=>{
 });
 document.getElementById('clearMapBtn').addEventListener('click', ()=>{
   if(!data) return;
-  data.bubbles=[]; data.connections=[];
+  const mm = activeMM();
+  mm.bubbles=[]; mm.connections=[];
   canvas.querySelectorAll('.bubble').forEach(b=>b.remove());
   svg.innerHTML='';
   scheduleSave();
@@ -1452,10 +1484,23 @@ searchInput.addEventListener('input', ()=>{
     if(t.title && t.title.toLowerCase().includes(q))
       results.push({type:'Task', label:t.title, preview:`Due ${t.effectiveDue}`, action:()=>navTo('planner',{scrollTo:'taskList'})});
   });
-  // mind map bubbles
-  (data.bubbles||[]).forEach(b=>{
-    if(b.text && b.text.toLowerCase().includes(q))
-      results.push({type:'Mind map', label:b.text.slice(0,50), preview:'Mind map bubble', action:()=>navTo('study',{scrollTo:'mindmapCanvas'})});
+  // mind map bubbles — across all 5 subject boards now, not one flat list
+  (data.mindmaps||[]).forEach((mm,mi)=>{
+    (mm.bubbles||[]).forEach(b=>{
+      if(b.text && b.text.toLowerCase().includes(q))
+        results.push({type:'Mind map', label:`${mm.name}: ${b.text.slice(0,50)}`, preview:'Mind map bubble', action:()=>{
+          mmActiveSubject=mi; renderMindmap();
+          navTo('study',{scrollTo:'mindmapCanvas'});
+        }});
+    });
+  });
+  // mind map subject names themselves
+  (data.mindmaps||[]).forEach((mm,mi)=>{
+    if(mm.name && mm.name.toLowerCase().includes(q))
+      results.push({type:'Mind map', label:mm.name, preview:`${(mm.bubbles||[]).length} bubble(s)`, action:()=>{
+        mmActiveSubject=mi; renderMindmap();
+        navTo('study',{scrollTo:'mindmapCanvas'});
+      }});
   });
 
   currentSearchResults = results;

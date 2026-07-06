@@ -1,4 +1,4 @@
--- Stud Desk database setup for Supabase.
+-- StudyCore database setup for Supabase.
 -- Run this once in your project's SQL Editor (Supabase dashboard → SQL Editor → New query).
 
 -- 1. One row per user, holding their profile name and all app data as JSON.
