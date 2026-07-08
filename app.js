@@ -1644,15 +1644,24 @@ function navTo(tab, opts={}){
 
 // Every tab/section is directly searchable by name, even with no content
 // match, so typing e.g. "Feynman" or "Leaderboard" jumps straight there.
+function openModalNav(modalId, beforeFn){
+  if(beforeFn) beforeFn();
+  document.getElementById(modalId).style.display='flex';
+  searchDropdown.classList.remove('open');
+  searchInput.value = '';
+}
 const navSearchItems = [
   { label:'Today', preview:'Your daily overview', run:()=>navTo('home') },
   { label:'Study', preview:'Mind map, Leitner box, flashcards', run:()=>navTo('study') },
-  { label:'Mind map', preview:'Visual brainstorming canvas', run:()=>navTo('study',{scrollTo:'mindmapCanvas'}) },
+  { label:'Mind map', preview:'Visual brainstorming canvas, 5 subject boards', run:()=>navTo('study',{scrollTo:'mindmapCanvas'}) },
   { label:'Leitner box', preview:'Spaced-repetition review boxes', run:()=>navTo('study',{scrollTo:'boxesWrap'}) },
   { label:'Flashcards', preview:'5 stacks, 150 cards each', run:()=>navTo('study',{scrollTo:'flashStackTabs'}) },
   { label:'Planner', preview:'Your assignments and deadlines', run:()=>navTo('planner') },
   { label:'Add assignment', preview:'Add a new task to your planner', run:()=>navTo('planner',{scrollTo:'taskTitle'}) },
+  { label:'Import calendar', preview:'Import assignments from a school .ics file', run:()=>navTo('calendar',{scrollTo:'icsFileInput'}) },
   { label:'Timer', preview:'Pomodoro focus timer', run:()=>navTo('timer') },
+  { label:'Ambient sound', preview:'White noise, pink noise, brown noise, rain, ocean waves', run:()=>navTo('timer',{scrollTo:'ambientSelect'}) },
+  { label:'Class bell schedule', preview:'Set your periods and bell times', run:()=>navTo('timer',{scrollTo:'bellNowStatus'}) },
   { label:'Notes', preview:'Basic notes, formal notes, Feynman', run:()=>navTo('notes',{subtab:'basic'}) },
   { label:'Basic notes', preview:'Quick freeform notes by subject', run:()=>navTo('notes',{subtab:'basic',scrollTo:'basic'}) },
   { label:'Formal notes', preview:'Cornell-style notes by subject', run:()=>navTo('notes',{subtab:'formal',scrollTo:'formal'}) },
@@ -1661,9 +1670,18 @@ const navSearchItems = [
   { label:'Question bank', preview:'All your saved questions', run:()=>navTo('qlog',{qsubtab:'qbank',scrollTo:'qList'}) },
   { label:'Practice test', preview:'Build and take practice tests', run:()=>navTo('qlog',{qsubtab:'qtests',scrollTo:'ptList'}) },
   { label:'Mistake log', preview:'Questions you got wrong', run:()=>navTo('qlog',{qsubtab:'qmistakes',scrollTo:'mistakeList'}) },
+  { label:'Grades', preview:'Major/quiz grades, semesters, final grade', run:()=>navTo('grades') },
+  { label:'Grade tracker', preview:'Track grades for up to 5 subjects', run:()=>navTo('grades',{scrollTo:'gtSubjectTabs'}) },
   { label:'Friends', preview:'Add and manage friends', run:()=>navTo('social') },
   { label:'Leaderboard', preview:'See where you rank', run:()=>navTo('social',{scrollTo:'leaderboard'}) },
   { label:'Calendar', preview:'Monthly view of tasks and reviews', run:()=>navTo('calendar') },
+  { label:'Weekly recap', preview:'Your last 7 days at a glance', run:()=>openModalNav('weeklyRecapModal', renderWeeklyRecap) },
+  { label:'Achievements', preview:'Unlockable milestones and badges', run:()=>openModalNav('achievementLogModal', renderAchievementLog) },
+  { label:'Achievement log', preview:'Unlockable milestones and badges', run:()=>openModalNav('achievementLogModal', renderAchievementLog) },
+  { label:'Account', preview:'Your name, dark mode, and settings', run:()=>openModalNav('accountModal', ()=>{
+      document.getElementById('settingsName').value = data.displayName || document.getElementById('userName').textContent;
+      document.getElementById('darkModeToggle').checked = data.darkMode || false;
+    }) },
 ];
 
 searchInput.addEventListener('input', ()=>{
