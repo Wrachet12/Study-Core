@@ -154,7 +154,11 @@ details summary{cursor:pointer;font-size:.8rem;color:#5b8aa8;font-weight:600;mar
   background-color:#fffdf6;
 }
 .map-lines{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
-.bubble{position:absolute;min-width:110px;max-width:180px;padding:10px 14px;border-radius:16px;font-size:.82rem;font-weight:600;text-align:center;cursor:grab;user-select:none;box-shadow:0 3px 8px rgba(0,0,0,.15);line-height:1.25;}
+.bubble{position:absolute;min-width:110px;max-width:180px;padding:10px 14px;border-radius:16px;font-size:.82rem;font-weight:600;text-align:center;cursor:grab;user-select:none;box-shadow:0 3px 8px rgba(0,0,0,.15);line-height:1.25;color:#2a2a2a;}
+/* BUGFIX: bubbles didn't set their own text color, so in dark mode they
+   inherited the page's light text color — nearly unreadable against the
+   bubbles' always-light pastel backgrounds. Pin it dark unconditionally. */
+body.dark-mode .bubble{color:#2a2a2a;}
 .bubble.selected{outline:3px solid var(--blue);}
 .bubble .del{position:absolute;top:-8px;right:-8px;width:18px;height:18px;border-radius:50%;background:#222;color:#fff;font-size:11px;line-height:18px;text-align:center;display:none;}
 .bubble:hover .del{display:block;}
@@ -309,6 +313,13 @@ body.dark-mode .subject-tabs button.active{background:var(--amber);color:#1a1005
   background:var(--paper);color:var(--ink);border-radius:14px;padding:28px 26px;width:340px;
   box-shadow:0 20px 60px rgba(0,0,0,.4);max-height:90vh;overflow-y:auto;
 }
+.modal-close-x{
+  position:absolute;top:10px;right:12px;background:none;border:none;font-size:1.5rem;line-height:1;
+  cursor:pointer;color:#999;padding:4px 8px;border-radius:6px;
+}
+.modal-close-x:hover{color:#333;background:rgba(0,0,0,.06);}
+body.dark-mode .modal-close-x{color:var(--text-dim);}
+body.dark-mode .modal-close-x:hover{color:#fff;background:rgba(255,255,255,.08);}
 body.dark-mode .modal-card{background:var(--surface2);color:var(--text);}
 .modal-card h2{margin-bottom:14px;}
 .modal-card label{display:block;font-size:.78rem;font-weight:600;color:#666;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.04em;}

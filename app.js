@@ -28,8 +28,10 @@ function newUserData(){
     achievements: [], // ids of unlocked achievements
     ambientSound: 'none',
     schedule: {
-      periods: [], // up to 10, each {name, subject} — added one at a time
-      bells: [] // up to 9 "HH:MM" bell times, in order — added one at a time
+      // unified timeline: each block is either a class period (named, with
+      // start/end) or a bell/passing period (no name, just start/end) —
+      // added in the order the school day actually runs
+      blocks: [] // {type:'period'|'bell', name, start:'HH:MM', end:'HH:MM'}
     },
     gradeTracker: {
       subjects: [1,2,3,4,5].map(i => ({
@@ -119,11 +121,42 @@ async function loadProfileAndEnter(userId, email){
   // One-time migration: earlier versions had a single flat mind map
   // (data.bubbles/data.connections) instead of 5 subject boards. Fold any
   // existing bubbles into Subject 1 so nothing gets lost.
+  // BUGFIX: this had no "already migrated" guard, so it re-ran on every
+  // single login — and since the old profile.app_data.bubbles/.connections
+  // fields never get cleaned up, it kept overwriting Subject 1 back to its
+  // ORIGINAL frozen snapshot from the very first migration, silently
+  // discarding any bubbles/connections added since. That's what was making
+  // it look like connections (and sometimes new bubbles) "don't save."
   const oldBubbles = profile.app_data && profile.app_data.bubbles;
-  if(Array.isArray(oldBubbles) && oldBubbles.length){
+  if(!data.mindmapMigratedV1 && Array.isArray(oldBubbles) && oldBubbles.length){
     data.mindmaps[0].bubbles = oldBubbles;
     data.mindmaps[0].connections = profile.app_data.connections || [];
     data.mindmaps[0].bubbleSeq = profile.app_data.bubbleSeq || 0;
+  }
+  data.mindmapMigratedV1 = true;
+  // One-time backfill: achievements/lifetimeStats launched after some
+  // accounts were already deep into using StudyCore (e.g. already high
+  // level), so a brand-new "0 focus sessions" counter would unfairly lock
+  // them out of achievements they'd clearly already earned. Estimate real
+  // lifetime counts from data that already exists, once, the first time
+  // this account loads without a lifetimeStats record.
+  if(!profile.app_data || !profile.app_data.lifetimeStatsBackfilled){
+    const flashcardCount = (data.flashcardStacks||[]).reduce((s,st)=>s+st.cards.length,0);
+    const leitnerReviewEstimate = [2,3,4,5].reduce((s,box)=>s+((data.leitner[box]||[]).length*(box-1)),0);
+    const notesEditedEstimate = (data.basicNotebooks||[]).reduce((s,nb)=>s+Object.values(nb.pages).filter(p=>p&&p.trim()).length,0)
+      + (data.formalNotebooks||[]).reduce((s,nb)=>s+Object.values(nb.pages).filter(p=>p&&(p.terms||p.notes||p.summary)).length,0);
+    const tasksCompletedEstimate = (data.tasks||[]).reduce((s,t)=>s+(t.doneDays?t.doneDays.length:0),0);
+    const testsCompletedEstimate = (data.questionLog?.practiceTests||[]).length;
+    data.lifetimeStats = {
+      focusSessions: Math.max(data.lifetimeStats?.focusSessions||0, data.level>=2 ? Math.round(data.xp/10) : 0),
+      leitnerReviews: Math.max(data.lifetimeStats?.leitnerReviews||0, leitnerReviewEstimate),
+      flashcards: Math.max(data.lifetimeStats?.flashcards||0, flashcardCount),
+      testsCompleted: Math.max(data.lifetimeStats?.testsCompleted||0, testsCompletedEstimate),
+      notesEdited: Math.max(data.lifetimeStats?.notesEdited||0, notesEditedEstimate),
+      tasksCompleted: Math.max(data.lifetimeStats?.tasksCompleted||0, tasksCompletedEstimate),
+    };
+    data.lifetimeStatsBackfilled = true;
+    checkAchievements();
   }
   document.getElementById('authOverlay').style.display='none';
   document.getElementById('appShell').style.display='block';
@@ -177,8 +210,15 @@ window.addEventListener('beforeunload', ()=>{ if(currentUserId) saveData(); });
 
 /* ===================== HELPERS ===================== */
 const INTERVALS = {1:1,2:2,3:4,4:9,5:14};
-const todayStr = ()=> new Date().toISOString().slice(0,10);
-const addDays = (dateStr,n)=>{ const d=new Date(dateStr+'T00:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+// BUGFIX: these used to build dates via .toISOString(), which converts to
+// UTC — for anyone west of UTC (e.g. US timezones), evening usage gets
+// stamped with tomorrow's UTC date, so "today" silently drifted depending
+// on what time of day you used the app. That's what was resetting streaks
+// to 1 constantly instead of incrementing day to day. These now use local
+// calendar-date components throughout.
+const localYMD = (d)=> `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const todayStr = ()=> localYMD(new Date());
+const addDays = (dateStr,n)=>{ const d=new Date(dateStr+'T00:00:00'); d.setDate(d.getDate()+n); return localYMD(d); };
 const daysBetween = (a,b)=> Math.round((new Date(b+'T00:00:00') - new Date(a+'T00:00:00'))/86400000);
 
 /* ===================== TOASTS / ENCOURAGEMENT ===================== */
@@ -436,9 +476,31 @@ document.getElementById('resetBtn').addEventListener('click', ()=>{
   running=false; clearInterval(timerHandle); mode='Focus'; remaining=workSec; sessionCount=0; renderTimer();
   sessionCounter.textContent = `Session 0 of 4 before a long break`;
 });
+// BUGFIX: the timer never actually played a sound — it only fired a silent
+// browser Notification (which needs permission and often makes no audible
+// sound at all depending on OS settings). This is a real, generated chime
+// that plays every time regardless of notification permissions.
+function playChime(){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const ctx = audioCtx;
+    if(ctx.state==='suspended') ctx.resume();
+    const now = ctx.currentTime;
+    [660, 880].forEach((freq, i)=>{
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, now + i*0.18);
+      gain.gain.linearRampToValueAtTime(0.25, now + i*0.18 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i*0.18 + 0.4);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now + i*0.18); osc.stop(now + i*0.18 + 0.45);
+    });
+  }catch(e){}
+}
 function tick(){
   remaining--;
   if(remaining<=0){
+    playChime();
     if(mode==='Focus'){
       sessionCount++;
       awardXP(10,false);
@@ -538,85 +600,74 @@ document.getElementById('ambientVolume').addEventListener('input', (e)=>{
 });
 
 /* ===================== CLASS BELL SCHEDULE ===================== */
-function renderPeriodEditRows(){
-  const wrap = document.getElementById('periodEditRows');
-  const periods = data.schedule.periods;
-  wrap.innerHTML = periods.map((p,i)=>`
+// BUGFIX/redesign: periods and bells used to be two disconnected lists —
+// periods had no real times at all (just names), bells were single instant
+// boundary points instead of actual passing-period durations. Real school
+// days are a single timeline of named class blocks and unnamed passing
+// blocks, each with its own start/end, so that's how it's modeled now.
+// Nothing here ever uses the browser Notification API — bell times are
+// class hours, when nobody's looking at a laptop, so this only ever
+// updates quiet on-screen text, never a popup/alert.
+function timeStrToMinutes(t){ const [h,m]=(t||'0:0').split(':').map(Number); return h*60+m; }
+function periodCount(){ return data.schedule.blocks.filter(b=>b.type==='period').length; }
+function bellCount(){ return data.schedule.blocks.filter(b=>b.type==='bell').length; }
+function renderScheduleBlockList(){
+  const wrap = document.getElementById('scheduleBlockList');
+  const blocks = data.schedule.blocks;
+  wrap.innerHTML = blocks.length ? blocks.map((b,i)=>`
     <div class="row" style="align-items:center;margin-bottom:6px;">
-      <div style="flex:0 0 90px;font-weight:600;">Period ${i+1}</div>
-      <div style="flex:2"><input data-period-i="${i}" class="periodSubjectInput" placeholder="e.g. Algebra II, Lunch, Free period" value="${(p.subject||'').replace(/"/g,'&quot;')}"></div>
-      <div style="flex:0 0 auto;"><button class="btn small red" onclick="removePeriod(${i})">Remove</button></div>
-    </div>`).join('') || '<p style="color:#999;font-size:.82rem;">No periods added yet.</p>';
-  document.getElementById('addPeriodBtn').disabled = periods.length>=10;
-  wrap.querySelectorAll('.periodSubjectInput').forEach(inp=>{
-    inp.addEventListener('input', (e)=>{
-      data.schedule.periods[parseInt(e.target.dataset.periodI)].subject = e.target.value;
-      scheduleSave();
-      updateBellStatus();
-    });
-  });
+      <div style="flex:0 0 90px;font-weight:600;">${b.type==='period'?'📚':'🔔'} ${b.type==='period'?'Period':'Bell'}</div>
+      <div style="flex:2">${b.type==='period' ? (b.name||'Untitled').replace(/</g,'&lt;') : '<span style="color:#999;">Passing period</span>'}</div>
+      <div style="flex:1">${b.start}–${b.end}</div>
+      <div style="flex:0 0 auto;"><button class="btn small red" onclick="removeScheduleBlock(${i})">Remove</button></div>
+    </div>`).join('') : '<p style="color:#999;font-size:.82rem;">No schedule built yet — add your first period below.</p>';
+  document.getElementById('addPeriodBtn').disabled = periodCount()>=10;
+  document.getElementById('addBellBtn').disabled = bellCount()>=9;
 }
-function removePeriod(i){ data.schedule.periods.splice(i,1); renderPeriodEditRows(); scheduleSave(); updateBellStatus(); }
-document.getElementById('addPeriodBtn').addEventListener('click', ()=>{
-  if(data.schedule.periods.length>=10){ showToast('Max 10 periods.'); return; }
-  data.schedule.periods.push({ name:`Period ${data.schedule.periods.length+1}`, subject:'' });
-  renderPeriodEditRows(); scheduleSave();
-});
-function renderBellEditRows(){
-  const wrap = document.getElementById('bellEditRows');
-  const bells = data.schedule.bells;
-  wrap.innerHTML = bells.map((b,i)=>`
-    <div class="row" style="align-items:center;margin-bottom:6px;">
-      <div style="flex:0 0 90px;font-weight:600;">Bell ${i+1}</div>
-      <div style="flex:1"><input type="time" data-bell-i="${i}" class="bellTimeInput" value="${b}"></div>
-      <div style="flex:0 0 auto;"><button class="btn small red" onclick="removeBell(${i})">Remove</button></div>
-    </div>`).join('') || '<p style="color:#999;font-size:.82rem;">No bell times added yet.</p>';
-  document.getElementById('addBellBtn').disabled = bells.length>=9;
-  wrap.querySelectorAll('.bellTimeInput').forEach(inp=>{
-    inp.addEventListener('input', (e)=>{
-      data.schedule.bells[parseInt(e.target.dataset.bellI)] = e.target.value;
-      data.schedule.bells.sort();
-      renderBellEditRows(); scheduleSave(); updateBellStatus();
-    });
-  });
+function removeScheduleBlock(i){ data.schedule.blocks.splice(i,1); renderScheduleBlockList(); scheduleSave(); updateBellStatus(); }
+function addScheduleBlock(type){
+  const name = document.getElementById('blockNameInput').value.trim();
+  const start = document.getElementById('blockStartInput').value;
+  const end = document.getElementById('blockEndInput').value;
+  if(!start || !end){ showToast('Set a start and end time.'); return; }
+  if(timeStrToMinutes(end) <= timeStrToMinutes(start)){ showToast('End time must be after start time.'); return; }
+  if(type==='period' && periodCount()>=10){ showToast('Max 10 periods.'); return; }
+  if(type==='bell' && bellCount()>=9){ showToast('Max 9 bells.'); return; }
+  data.schedule.blocks.push({ type, name: type==='period'?(name||`Period ${periodCount()+1}`):'', start, end });
+  data.schedule.blocks.sort((a,b)=> timeStrToMinutes(a.start)-timeStrToMinutes(b.start));
+  document.getElementById('blockNameInput').value='';
+  document.getElementById('blockStartInput').value = end; // next block naturally starts where this one ended
+  document.getElementById('blockEndInput').value='';
+  renderScheduleBlockList(); scheduleSave(); updateBellStatus();
 }
-function removeBell(i){ data.schedule.bells.splice(i,1); renderBellEditRows(); scheduleSave(); updateBellStatus(); }
-document.getElementById('addBellBtn').addEventListener('click', ()=>{
-  if(data.schedule.bells.length>=9){ showToast('Max 9 bell times.'); return; }
-  data.schedule.bells.push('08:00');
-  data.schedule.bells.sort();
-  renderBellEditRows(); scheduleSave();
-});
-function timeStrToMinutes(t){ const [h,m]=t.split(':').map(Number); return h*60+m; }
+document.getElementById('addPeriodBtn').addEventListener('click', ()=>addScheduleBlock('period'));
+document.getElementById('addBellBtn').addEventListener('click', ()=>addScheduleBlock('bell'));
 function updateBellStatus(){
   const el = document.getElementById('bellNowStatus');
   if(!el || !data) return;
-  const bells = (data.schedule.bells||[]).slice().sort();
-  const periods = data.schedule.periods||[];
-  if(bells.length===0 || periods.length===0){
-    el.textContent = "Set up your periods and bell times below to see what's next.";
+  const blocks = data.schedule.blocks||[];
+  if(blocks.length===0){
+    el.textContent = "Build your schedule below to see what's happening right now.";
     return;
   }
   const nowMin = new Date().getHours()*60 + new Date().getMinutes();
-  const bellMins = bells.map(timeStrToMinutes);
-  let idx = bellMins.findIndex(bm => nowMin < bm);
-  if(idx === -1) idx = bellMins.length;
-  if(idx >= periods.length){
-    el.textContent = "School's out for the day — good time for a focus session or flashcard review.";
+  const current = blocks.find(b => nowMin >= timeStrToMinutes(b.start) && nowMin < timeStrToMinutes(b.end));
+  if(!current){
+    // gap with nothing scheduled — the only case where a gentle suggestion
+    // makes sense, and it's still just quiet text, never a popup
+    el.textContent = "Nothing scheduled right now — good time for a focus session or flashcard review if you're free.";
     return;
   }
-  const period = periods[idx];
-  const label = period.subject ? `Period ${idx+1} (${period.subject})` : `Period ${idx+1}`;
-  if(idx < bellMins.length){
-    el.textContent = `Currently: ${label} — ${bellMins[idx]-nowMin} min until the bell.`;
+  const minsLeft = timeStrToMinutes(current.end) - nowMin;
+  if(current.type==='period'){
+    el.textContent = `Currently: ${current.name} — ${minsLeft} min left.`;
   } else {
-    el.textContent = `Currently: ${label} (last period).`;
+    el.textContent = `Passing period — ${minsLeft} min until next class.`;
   }
 }
 setInterval(updateBellStatus, 30000);
 function renderSchedule(){
-  renderPeriodEditRows();
-  renderBellEditRows();
+  renderScheduleBlockList();
   updateBellStatus();
   document.getElementById('ambientSelect').value = data.ambientSound || 'none';
 }
@@ -1595,6 +1646,7 @@ document.getElementById('weeklyRecapBtn').addEventListener('click', ()=>{
   document.getElementById('weeklyRecapModal').style.display='flex';
 });
 document.getElementById('closeWeeklyRecap').addEventListener('click', ()=>{ document.getElementById('weeklyRecapModal').style.display='none'; });
+document.getElementById('closeWeeklyRecapX').addEventListener('click', ()=>{ document.getElementById('weeklyRecapModal').style.display='none'; });
 
 /* ===================== ACHIEVEMENT LOG ===================== */
 function renderAchievementLog(){
@@ -1609,6 +1661,7 @@ document.getElementById('achievementLogBtn').addEventListener('click', ()=>{
   document.getElementById('achievementLogModal').style.display='flex';
 });
 document.getElementById('closeAchievementLog').addEventListener('click', ()=>{ document.getElementById('achievementLogModal').style.display='none'; });
+document.getElementById('closeAchievementLogX').addEventListener('click', ()=>{ document.getElementById('achievementLogModal').style.display='none'; });
 
 document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
   const newName = document.getElementById('settingsName').value.trim();
@@ -2229,7 +2282,7 @@ function renderCalendar(){
   const addEvent=(dateStr, text, cls)=>{ if(!events[dateStr]) events[dateStr]=[]; events[dateStr].push({text,cls}); };
   data.tasks.forEach(t=>{ addEvent(t.effectiveDue, t.title.slice(0,20), 'cal-ev-task'); });
   data.questionLog.mistakes.forEach(m=>{
-    const d=new Date(m.ts); const ds=d.toISOString().slice(0,10);
+    const d=new Date(m.ts); const ds=localYMD(d);
     addEvent(ds, m.prompt.slice(0,20), 'cal-ev-mistake');
   });
 
@@ -2265,7 +2318,7 @@ function showCalDayDetail(dateStr){
   const detail=document.getElementById('calDayDetail');
   detail.style.display='block';
   const tasks=data.tasks.filter(t=>t.effectiveDue===dateStr);
-  const mistakes=data.questionLog.mistakes.filter(m=>new Date(m.ts).toISOString().slice(0,10)===dateStr);
+  const mistakes=data.questionLog.mistakes.filter(m=>localYMD(new Date(m.ts))===dateStr);
   let html=`<h3>${dateStr}</h3>`;
   if(tasks.length) html+=`<strong>Tasks due:</strong>`+tasks.map(t=>`<div class="home-item">📋 ${t.title.replace(/</g,'&lt;')}</div>`).join('');
   if(mistakes.length) html+=`<strong>Mistakes logged:</strong>`+mistakes.map(m=>`<div class="home-item" style="color:var(--red);">❌ ${m.prompt.slice(0,60).replace(/</g,'&lt;')}</div>`).join('');

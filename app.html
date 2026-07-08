@@ -284,18 +284,23 @@
     </div>
   </div>
 
-  <!-- CLASS BELL SCHEDULE -->
+  <!-- CLASS BELL SCHEDULE — its own separate section -->
   <div class="card">
     <h2>Class bell schedule</h2>
-    <p style="font-size:.85rem;color:#555;">Set up to 10 periods and up to 9 bell times, and StudyCore will show you what's next and how long until the bell.</p>
+    <p style="font-size:.85rem;color:#555;">Build your whole day as one timeline: add a class period (name it, give it a start and end time), then add the passing bell right after it (just start and end — no name needed), and so on. Up to 10 periods and 9 bells total.</p>
     <div id="bellNowStatus" style="font-weight:600;margin-bottom:10px;"></div>
     <details>
-      <summary>Edit periods &amp; bell times</summary>
-      <div id="periodEditRows" style="margin-top:10px;"></div>
-      <button class="btn small ghost" id="addPeriodBtn" style="margin-top:8px;">+ Add period (up to 10)</button>
-      <h4 style="margin-top:14px;">Bell times (up to 9 — the boundaries between your periods, in order)</h4>
-      <div id="bellEditRows"></div>
-      <button class="btn small ghost" id="addBellBtn" style="margin-top:8px;">+ Add bell time</button>
+      <summary>Edit your schedule</summary>
+      <div id="scheduleBlockList" style="margin-top:10px;"></div>
+      <div class="row" style="align-items:flex-end;margin-top:10px;">
+        <div style="flex:2"><label>Name (period only)</label><input id="blockNameInput" placeholder="e.g. Algebra II, Lunch"></div>
+        <div style="flex:1"><label>Start</label><input id="blockStartInput" type="time"></div>
+        <div style="flex:1"><label>End</label><input id="blockEndInput" type="time"></div>
+      </div>
+      <div class="pillgroup" style="margin-top:8px;">
+        <button class="btn small amber" id="addPeriodBtn">+ Add period (up to 10)</button>
+        <button class="btn small ghost" id="addBellBtn">+ Add bell / passing period (up to 9)</button>
+      </div>
     </details>
   </div>
 </section>
@@ -624,7 +629,8 @@
 
 <!-- Weekly Recap modal -->
 <div id="weeklyRecapModal" class="modal-overlay" style="display:none;">
-  <div class="modal-card">
+  <div class="modal-card" style="position:relative;">
+    <button class="modal-close-x" id="closeWeeklyRecapX" aria-label="Close">×</button>
     <h2>Your week in StudyCore</h2>
     <p style="font-size:.85rem;color:#555;">The last 7 days.</p>
     <div id="weeklyRecapContent"></div>
@@ -634,7 +640,8 @@
 
 <!-- Achievement Log modal -->
 <div id="achievementLogModal" class="modal-overlay" style="display:none;">
-  <div class="modal-card">
+  <div class="modal-card" style="position:relative;">
+    <button class="modal-close-x" id="closeAchievementLogX" aria-label="Close">×</button>
     <h2>Achievements</h2>
     <p style="font-size:.85rem;color:#555;">Unlocked achievements are highlighted — the rest are still up for grabs.</p>
     <div id="achievementLogContent"></div>
