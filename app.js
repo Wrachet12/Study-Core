@@ -1191,7 +1191,12 @@ function toggleConnection(a,b){
   const idx = mm.connections.findIndex(c => (c.from===a&&c.to===b)||(c.from===b&&c.to===a));
   if(idx>-1){ mm.connections.splice(idx,1); } else { mm.connections.push({from:a, to:b}); }
   renderLines();
-  scheduleSave();
+  // BUGFIX: connections used to rely on the normal 900ms debounced save.
+  // Making a connection and then quickly switching mind map subjects/tabs
+  // or closing the laptop could beat that delay. Connections are a
+  // deliberate, infrequent action (not something rapid-fire like dragging),
+  // so there's no real cost to saving them immediately instead.
+  saveData();
 }
 function renderLines(){
   if(!data) return;
@@ -1209,6 +1214,13 @@ function renderLines(){
   });
 }
 function renderMindmap(){
+  // BUGFIX: switching subjects never cleared connectFirst/connectMode
+  // selection state. Bubble ids restart from 1 in every subject, so a
+  // half-made connection from Subject 1 (say, bubble id 3 selected) could
+  // silently carry over and attach to whatever bubble happens to be id 3
+  // in Subject 2 — or just vanish if no such id exists there. Always reset
+  // on render.
+  connectFirst = null;
   renderSubjectTabs('mmSubjectTabs', data.mindmaps, mmActiveSubject, (i)=>{
     mmActiveSubject = i; renderMindmap();
   });
