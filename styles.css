@@ -354,6 +354,8 @@ body.dark-mode .tip.risk{background:#3a1e1e;color:#e8a5a2;}
 body.dark-mode .tip.good{background:#1e3324;color:#9adaa8;}
 body.dark-mode .subject-tabs button{background:var(--surface2);border-color:var(--paper-line);color:var(--text-dim);}
 body.dark-mode .subject-tabs button.active{background:var(--amber);color:var(--carbon);}
+body.dark-mode .userbox button{color:#FFDD55;border-color:#8a7420;}
+body.dark-mode .userbox button:hover{color:#fff;border-color:#FFDD55;}
 
 /* ---------- SEARCH BAR ---------- */
 .topbar-center{position:relative;flex:1;max-width:360px;margin:0 18px;}
@@ -388,14 +390,14 @@ body.dark-mode .modal-close-x:hover{color:#fff;background:rgba(255,255,255,.08);
    look in both light and dark mode, instead of the default dark-ink-on-
    white-plate styling every other modal uses. */
 #weeklyRecapModal .modal-card, #achievementLogModal .modal-card{
-  background:var(--carbon); color:#EFE6C8; border:1px solid #EFE6C8;
+  background:var(--carbon); color:#FFDD55; border:1px solid #FFDD55;
 }
-#weeklyRecapModal .modal-card h2, #achievementLogModal .modal-card h2{ color:#EFE6C8; background:var(--carbon); }
-#weeklyRecapModal .modal-card p, #achievementLogModal .modal-card p{ color:#c9c0a0 !important; }
-#weeklyRecapModal .home-item, #achievementLogModal .home-item{ color:#EFE6C8; border-bottom-color:var(--chrome-indigo); }
-#weeklyRecapModal .modal-close-x, #achievementLogModal .modal-close-x{ color:#c9c0a0; }
+#weeklyRecapModal .modal-card h2, #achievementLogModal .modal-card h2{ color:#FFDD55; background:var(--carbon); }
+#weeklyRecapModal .modal-card p, #achievementLogModal .modal-card p{ color:#d4b93d !important; }
+#weeklyRecapModal .home-item, #achievementLogModal .home-item{ color:#FFDD55; border-bottom-color:var(--chrome-indigo); }
+#weeklyRecapModal .modal-close-x, #achievementLogModal .modal-close-x{ color:#d4b93d; }
 #weeklyRecapModal .modal-close-x:hover, #achievementLogModal .modal-close-x:hover{ color:#fff; background:rgba(255,255,255,.1); }
-#weeklyRecapModal .btn.ghost, #achievementLogModal .btn.ghost{ border-color:#EFE6C8; color:#EFE6C8; }
+#weeklyRecapModal .btn.ghost, #achievementLogModal .btn.ghost{ border-color:#FFDD55; color:#FFDD55; }
 body.dark-mode .modal-card{background:var(--surface2);color:var(--text);}
 .modal-card h2{margin-bottom:14px;background:var(--canvas);color:#fff;margin-left:-26px;margin-right:-26px;margin-top:-28px;padding:10px 26px;font-size:.85rem;text-transform:uppercase;letter-spacing:.4px;}
 .modal-card label{display:block;font-size:.72rem;font-weight:700;color:var(--ink-soft,#3d4f97);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.4px;}
