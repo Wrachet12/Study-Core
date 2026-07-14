@@ -3,6 +3,8 @@
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUserId = null;
+let currentUserEmail = null;
+const FEEDBACK_HOST_EMAIL = 'wajid.khan24120@gmail.com';
 let data = null; // current user's app data object (mirrors a JSON column in Supabase)
 
 function newNotebookSet(prefix){
@@ -117,6 +119,7 @@ async function loadProfileAndEnter(userId, email){
     return;
   }
   currentUserId = userId;
+  currentUserEmail = email || null;
   data = Object.assign(newUserData(), profile.app_data || {});
   // BUGFIX: schedule used to be {periods, bells} in an earlier version of
   // this feature; Object.assign replaces the whole nested object wholesale,
@@ -346,6 +349,7 @@ document.querySelectorAll('.tab').forEach(btn=>{
     // saving and loading fine all along — they just couldn't be seen.
     // Redraw them the moment the Study tab actually becomes visible.
     if(btn.dataset.tab === 'study' && typeof renderLines === 'function') renderLines();
+    if(btn.dataset.tab === 'feedback' && typeof isFeedbackHost === 'function' && isFeedbackHost()) renderFbStats();
   });
 });
 document.querySelectorAll('.subtab').forEach(btn=>{
@@ -2577,6 +2581,212 @@ document.getElementById('icsImportBtn').addEventListener('click', ()=>{
   scheduleSave();
 });
 
+/* ===================== DAILY FEEDBACK ===================== */
+let fbQuestions = [], fbWindow = null, fbMyResponses = {};
+function isFeedbackHost(){ return currentUserEmail === FEEDBACK_HOST_EMAIL; }
+function fbWindowIsOpen(){
+  if(!fbWindow) return false;
+  const now = Date.now();
+  if(fbWindow.opens_at && now < new Date(fbWindow.opens_at).getTime()) return false;
+  if(fbWindow.closes_at && now > new Date(fbWindow.closes_at).getTime()) return false;
+  return !!fbWindow.open;
+}
+async function loadFeedback(){
+  try{
+    const { data: win } = await sb.from('feedback_window').select('*').eq('id',1).single();
+    fbWindow = win || { open:false };
+  }catch(e){ fbWindow = { open:false }; }
+  try{
+    let q = sb.from('feedback_questions').select('*').order('sort_order',{ascending:true});
+    if(!isFeedbackHost()) q = q.eq('active', true);
+    const { data: qs } = await q;
+    fbQuestions = qs || [];
+  }catch(e){ fbQuestions = []; }
+  try{
+    const { data: mine } = await sb.from('feedback_responses').select('question_id,answer').eq('user_id', currentUserId);
+    fbMyResponses = {};
+    (mine||[]).forEach(r=>{ fbMyResponses[r.question_id] = r.answer; });
+  }catch(e){ fbMyResponses = {}; }
+  updateFeedbackTabVisibility();
+  renderFeedback();
+}
+function updateFeedbackTabVisibility(){
+  // Host always sees the tab (to manage it). Everyone else sees it only
+  // while the window is open.
+  const show = isFeedbackHost() || fbWindowIsOpen();
+  document.getElementById('feedbackTabBtn').style.display = show ? '' : 'none';
+}
+function renderFeedback(){
+  document.querySelectorAll('.host-only').forEach(el=>{ el.style.display = isFeedbackHost() ? '' : 'none'; });
+  if(isFeedbackHost()){ renderFbWindowStatus(); renderFbHostQuestions(); }
+  renderFbUserForm();
+}
+
+/* ---- HOST: window control ---- */
+function renderFbWindowStatus(){
+  const el = document.getElementById('fbWindowStatus');
+  if(!el) return;
+  if(fbWindowIsOpen()) el.textContent = 'Status: OPEN — the tab is visible to everyone right now.';
+  else el.textContent = 'Status: CLOSED — only you can see this tab right now.';
+}
+async function fbSetWindow(patch){
+  try{
+    const payload = Object.assign({ updated_at:new Date().toISOString() }, patch);
+    const { error } = await sb.from('feedback_window').update(payload).eq('id',1);
+    if(error) throw error;
+    await loadFeedback();
+    showToast('Feedback window updated.');
+  }catch(e){ showToast('Could not update the window — are you signed in as the host?'); }
+}
+document.getElementById('fbOpenNowBtn')?.addEventListener('click', ()=> fbSetWindow({ open:true, opens_at:null, closes_at:null }));
+document.getElementById('fbCloseNowBtn')?.addEventListener('click', ()=> fbSetWindow({ open:false, opens_at:null, closes_at:null }));
+document.getElementById('fbSaveScheduleBtn')?.addEventListener('click', ()=>{
+  const o = document.getElementById('fbOpensAt').value;
+  const c = document.getElementById('fbClosesAt').value;
+  fbSetWindow({ open:true, opens_at:o?new Date(o).toISOString():null, closes_at:c?new Date(c).toISOString():null });
+});
+
+/* ---- HOST: question builder ---- */
+document.getElementById('fbQType')?.addEventListener('change', (e)=>{
+  const needsOptions = e.target.value==='one' || e.target.value==='many';
+  document.getElementById('fbOptionsWrap').style.display = needsOptions ? '' : 'none';
+});
+document.getElementById('fbAddQBtn')?.addEventListener('click', async ()=>{
+  const prompt = document.getElementById('fbQPrompt').value.trim();
+  const qtype = document.getElementById('fbQType').value;
+  if(!prompt){ showToast('Write the question prompt first.'); return; }
+  let options = [];
+  if(qtype==='one' || qtype==='many'){
+    options = document.getElementById('fbQOptions').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(options.length < 2){ showToast('Give at least two options.'); return; }
+  }
+  try{
+    const { error } = await sb.from('feedback_questions').insert({ prompt, qtype, options, active:true, sort_order: fbQuestions.length });
+    if(error) throw error;
+    document.getElementById('fbQPrompt').value=''; document.getElementById('fbQOptions').value='';
+    await loadFeedback();
+    showToast('Question added.');
+  }catch(e){ showToast('Could not add question — are you the host?'); }
+});
+function renderFbHostQuestions(){
+  const wrap = document.getElementById('fbHostQuestionList');
+  if(!wrap) return;
+  const typeLabel = { one:'Pick one', many:'Pick several', star:'Star 1–5', yesno:'Yes/No' };
+  wrap.innerHTML = fbQuestions.length ? fbQuestions.map(q=>`
+    <div class="qcard">
+      <div class="qcard-head">
+        <div class="qcard-prompt">${q.prompt.replace(/</g,'&lt;')}</div>
+        <span class="qtype-badge">${typeLabel[q.qtype]}</span>
+      </div>
+      ${q.options && q.options.length?`<div style="font-size:.78rem;color:#999;margin-top:4px;">${q.options.map(o=>o.replace(/</g,'&lt;')).join(' · ')}</div>`:''}
+      <div class="pillgroup" style="margin-top:8px;">
+        <button class="btn small ghost" onclick="fbToggleActive(${q.id}, ${!q.active})">${q.active?'Deactivate':'Activate'}</button>
+        <button class="btn small red" onclick="fbDeleteQuestion(${q.id})">Delete</button>
+        <span style="font-size:.72rem;color:#999;align-self:center;">${q.active?'Active':'Hidden'}</span>
+      </div>
+    </div>`).join('') : '<p style="color:#999;font-size:.85rem;">No questions yet.</p>';
+}
+async function fbToggleActive(id, active){
+  try{ await sb.from('feedback_questions').update({ active }).eq('id', id); await loadFeedback(); }
+  catch(e){ showToast('Update failed.'); }
+}
+async function fbDeleteQuestion(id){
+  try{ await sb.from('feedback_questions').delete().eq('id', id); await loadFeedback(); showToast('Question deleted.'); }
+  catch(e){ showToast('Delete failed.'); }
+}
+
+/* ---- HOST: live stats ---- */
+document.getElementById('fbRefreshStatsBtn')?.addEventListener('click', renderFbStats);
+async function renderFbStats(){
+  const wrap = document.getElementById('fbStats');
+  if(!wrap) return;
+  wrap.innerHTML = '<p style="color:#999;font-size:.82rem;">Loading…</p>';
+  let responses = [];
+  try{
+    const { data } = await sb.from('feedback_responses').select('question_id,answer');
+    responses = data || [];
+  }catch(e){ wrap.innerHTML = '<p style="color:var(--red);font-size:.82rem;">Could not load stats.</p>'; return; }
+  const byQ = {};
+  responses.forEach(r=>{ (byQ[r.question_id]=byQ[r.question_id]||[]).push(r.answer); });
+  const bar = (label, count, total)=>{
+    const pct = total? Math.round(count/total*100):0;
+    return `<div style="margin:4px 0;font-size:.8rem;">
+      <div style="display:flex;justify-content:space-between;"><span>${label.replace(/</g,'&lt;')}</span><span>${count} (${pct}%)</span></div>
+      <div style="height:8px;background:var(--surface2);border-radius:100px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--accent);"></div></div>
+    </div>`;
+  };
+  wrap.innerHTML = fbQuestions.map(q=>{
+    const ans = byQ[q.id]||[];
+    const total = ans.length;
+    let body = '';
+    if(q.qtype==='star'){
+      const avg = total? (ans.reduce((s,a)=>s+(+a||0),0)/total).toFixed(2) : '—';
+      const dist = [1,2,3,4,5].map(n=>ans.filter(a=>(+a)===n).length);
+      body = `<div style="font-weight:600;margin-bottom:4px;">Average: ${avg} ★ (${total} response${total===1?'':'s'})</div>` +
+        [5,4,3,2,1].map(n=>bar(n+' ★', dist[n-1], total)).join('');
+    } else if(q.qtype==='yesno'){
+      const yes = ans.filter(a=>a===true||a==='yes'||a==='Yes').length;
+      const no = total-yes;
+      body = bar('Yes', yes, total) + bar('No', no, total);
+    } else {
+      const counts = {};
+      (q.options||[]).forEach(o=>counts[o]=0);
+      ans.forEach(a=>{ (Array.isArray(a)?a:[a]).forEach(v=>{ counts[v]=(counts[v]||0)+1; }); });
+      body = (q.options||[]).map(o=>bar(o, counts[o]||0, total)).join('');
+      body = `<div style="font-size:.78rem;color:#999;margin-bottom:4px;">${total} response${total===1?'':'s'}</div>` + body;
+    }
+    return `<div class="qcard"><div class="qcard-prompt">${q.prompt.replace(/</g,'&lt;')}</div>${body}</div>`;
+  }).join('') || '<p style="color:#999;font-size:.85rem;">No questions to show stats for.</p>';
+}
+
+/* ---- EVERYONE: answer form ---- */
+function renderFbUserForm(){
+  const wrap = document.getElementById('fbUserForm');
+  if(!wrap) return;
+  const active = fbQuestions.filter(q=>q.active);
+  if(!fbWindowIsOpen() && !isFeedbackHost()){
+    wrap.innerHTML = '<p style="color:#999;font-size:.85rem;">Feedback is closed right now — check back later.</p>'; return;
+  }
+  if(active.length===0){ wrap.innerHTML = '<p style="color:#999;font-size:.85rem;">No feedback questions right now.</p>'; return; }
+  wrap.innerHTML = active.map(q=>{
+    const mine = fbMyResponses[q.id];
+    let field = '';
+    if(q.qtype==='one'){
+      field = q.options.map(o=>`<label class="mcq-opt"><input type="radio" name="fbq${q.id}" value="${o.replace(/"/g,'&quot;')}" ${mine===o?'checked':''} onchange="fbAnswer(${q.id}, this.value)"> ${o.replace(/</g,'&lt;')}</label>`).join('');
+    } else if(q.qtype==='many'){
+      const arr = Array.isArray(mine)?mine:[];
+      field = q.options.map(o=>`<label class="mcq-opt"><input type="checkbox" value="${o.replace(/"/g,'&quot;')}" ${arr.includes(o)?'checked':''} onchange="fbAnswerMany(${q.id})"> ${o.replace(/</g,'&lt;')}</label>`).join('');
+    } else if(q.qtype==='star'){
+      field = `<div class="fb-stars" data-q="${q.id}">` + [1,2,3,4,5].map(n=>`<span class="fb-star ${(+mine>=n)?'on':''}" onclick="fbAnswer(${q.id}, ${n})">★</span>`).join('') + `</div>`;
+    } else {
+      field = `<label class="mcq-opt"><input type="radio" name="fbq${q.id}" ${mine===true?'checked':''} onchange="fbAnswer(${q.id}, true)"> Yes</label>
+               <label class="mcq-opt"><input type="radio" name="fbq${q.id}" ${mine===false?'checked':''} onchange="fbAnswer(${q.id}, false)"> No</label>`;
+    }
+    return `<div class="qcard" data-fbq="${q.id}"><div class="qcard-prompt">${q.prompt.replace(/</g,'&lt;')}</div><div style="margin-top:8px;">${field}</div></div>`;
+  }).join('');
+}
+async function fbSubmit(questionId, answer){
+  fbMyResponses[questionId] = answer;
+  try{
+    await sb.from('feedback_responses').upsert(
+      { question_id: questionId, user_id: currentUserId, answer, updated_at:new Date().toISOString() },
+      { onConflict: 'question_id,user_id' }
+    );
+    showToast('Answer saved.');
+  }catch(e){ showToast('Could not save your answer.'); }
+}
+function fbAnswer(questionId, value){
+  // refresh star visual immediately for star questions
+  const starWrap = document.querySelector(`.fb-stars[data-q="${questionId}"]`);
+  if(starWrap){ starWrap.querySelectorAll('.fb-star').forEach((s,i)=>s.classList.toggle('on', i < value)); }
+  fbSubmit(questionId, value);
+}
+function fbAnswerMany(questionId){
+  const card = document.querySelector(`.qcard[data-fbq="${questionId}"]`);
+  const checked = Array.from(card.querySelectorAll('input[type="checkbox"]:checked')).map(c=>c.value);
+  fbSubmit(questionId, checked);
+}
+
 /* ===================== FULL RENDER ON LOGIN ===================== */
 // BUGFIX: renderAll() used to call renderQuestionLog(), which didn't exist —
 // that threw a ReferenceError partway through renderAll() and silently
@@ -2616,6 +2826,7 @@ async function renderAll(){
   buildSchedule();
   renderSchedule();
   renderGradeTracker();
+  loadFeedback();
   applyDarkMode(data.lightMode||false);
   // restore display name if saved
   if(data.displayName) document.getElementById('userName').textContent = data.displayName;

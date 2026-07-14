@@ -535,3 +535,10 @@ body.light-mode .subject-tabs button.active{background:#2456c4;color:#fff;}
 body.light-mode #weeklyRecapModal .modal-card, body.light-mode #achievementLogModal .modal-card{
   background:linear-gradient(160deg,#132a5c,#0c1c40);
 }
+
+/* ---- Daily Feedback star rating ---- */
+.fb-stars{display:flex;gap:6px;font-size:1.8rem;cursor:pointer;}
+.fb-star{color:var(--paper-line);transition:.1s;user-select:none;}
+.fb-star:hover,.fb-star.on{color:#f5c518;}
+body.light-mode .fb-star{color:#c9d2e8;}
+body.light-mode .fb-star:hover,body.light-mode .fb-star.on{color:#f5b301;}

@@ -6,7 +6,7 @@
 <title>StudyCore — Plan, Time, Note, Learn</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=12">
+<link rel="stylesheet" href="styles.css?v=13">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5483196886768719" crossorigin="anonymous"></script>
 </head>
 <body>
@@ -92,6 +92,7 @@
   <button class="tab" data-tab="grades">Grades</button>
   <button class="tab" data-tab="social">Friends</button>
   <button class="tab" data-tab="calendar">Calendar</button>
+  <button class="tab" data-tab="feedback" id="feedbackTabBtn" style="display:none;">Daily Feedback</button>
 </nav>
 
 <main>
@@ -605,6 +606,61 @@
   </div>
 </section>
 
+<!-- DAILY FEEDBACK TAB -->
+<section id="feedback" class="panel">
+  <!-- HOST-ONLY: window control -->
+  <div class="card host-only" style="display:none;">
+    <h2>Feedback window (host)</h2>
+    <p style="font-size:.85rem;color:#999;">Control when the Daily Feedback tab is visible to everyone. Leave the times blank to open/close it manually right now.</p>
+    <div class="row" style="align-items:flex-end;">
+      <div><label>Opens at (optional)</label><input type="datetime-local" id="fbOpensAt"></div>
+      <div><label>Closes at (optional)</label><input type="datetime-local" id="fbClosesAt"></div>
+    </div>
+    <div class="pillgroup" style="margin-top:10px;">
+      <button class="btn amber" id="fbOpenNowBtn">Open now</button>
+      <button class="btn ghost" id="fbCloseNowBtn">Close now</button>
+      <button class="btn blue" id="fbSaveScheduleBtn">Save scheduled window</button>
+    </div>
+    <p id="fbWindowStatus" style="font-size:.82rem;margin-top:8px;font-weight:600;"></p>
+  </div>
+
+  <!-- HOST-ONLY: question builder -->
+  <div class="card host-only" style="display:none;">
+    <h2>Question builder (host)</h2>
+    <div class="row">
+      <div style="flex:2"><label>Question prompt</label><input id="fbQPrompt" placeholder="e.g. How useful was StudyCore today?"></div>
+      <div style="flex:1"><label>Answer type</label>
+        <select id="fbQType">
+          <option value="one">Pick one</option>
+          <option value="many">Pick several</option>
+          <option value="star">Star rating (1–5)</option>
+          <option value="yesno">Yes / No</option>
+        </select>
+      </div>
+    </div>
+    <div id="fbOptionsWrap">
+      <label>Options (one per line — for Pick one / Pick several)</label>
+      <textarea id="fbQOptions" style="min-height:70px;" placeholder="Very useful&#10;Somewhat useful&#10;Not useful"></textarea>
+    </div>
+    <button class="btn amber" id="fbAddQBtn" style="margin-top:8px;">+ Add question</button>
+    <div id="fbHostQuestionList" style="margin-top:16px;"></div>
+  </div>
+
+  <!-- HOST-ONLY: live stats -->
+  <div class="card host-only" style="display:none;">
+    <h2>Live results (host)</h2>
+    <button class="btn ghost small" id="fbRefreshStatsBtn">Refresh stats</button>
+    <div id="fbStats" style="margin-top:12px;"></div>
+  </div>
+
+  <!-- EVERYONE: answer view -->
+  <div class="card">
+    <h2>Daily feedback</h2>
+    <p style="font-size:.85rem;color:#999;">Your answers help shape StudyCore. You can change them any time while feedback is open.</p>
+    <div id="fbUserForm"></div>
+  </div>
+</section>
+
 </main>
 </div><!-- /appShell -->
 
@@ -661,8 +717,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=12"></script>
-<script src="app.js?v=12"></script>
+<script src="config.js?v=13"></script>
+<script src="app.js?v=13"></script>
 <script>
   if(location.hash === '#signup'){ try{ switchAuthTab('signup'); }catch(e){} }
 </script>
