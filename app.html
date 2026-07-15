@@ -6,7 +6,7 @@
 <title>StudyCore — Plan, Time, Note, Learn</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=15">
+<link rel="stylesheet" href="styles.css?v=16">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5483196886768719" crossorigin="anonymous"></script>
 </head>
 <body>
@@ -75,6 +75,10 @@
       <input type="checkbox" id="darkModeToggle" style="width:auto;">
       Light mode (cream)
     </label>
+    <hr style="margin:18px 0;border:none;border-top:1px solid var(--paper-line);">
+    <label>Your subjects</label>
+    <p style="font-size:.75rem;color:#999;margin:0 0 8px;">Name them once here and they apply everywhere — notes, flashcards, mind maps, question log, and grades.</p>
+    <div id="settingsSubjects"></div>
     <hr style="margin:18px 0;border:none;border-top:1px solid var(--paper-line);">
     <label>Your data</label>
     <p style="font-size:.75rem;color:#999;margin:0 0 8px;">Download a backup of everything — notes, flashcards, tasks, questions, grades. Keep it somewhere safe.</p>
@@ -769,8 +773,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=15"></script>
-<script src="app.js?v=15"></script>
+<script src="config.js?v=16"></script>
+<script src="app.js?v=16"></script>
 <script>
   if(location.hash === '#signup'){ try{ switchAuthTab('signup'); }catch(e){} }
 </script>

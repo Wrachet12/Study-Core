@@ -820,7 +820,7 @@ function renderBasicNotebooks(){
   loadBasicPage();
 }
 document.getElementById('basicSubjectName').addEventListener('input', (e)=>{
-  data.basicNotebooks[basicActiveSubject].name = e.target.value || `Subject ${basicActiveSubject+1}`;
+  syncSubjectRename(basicActiveSubject, e.target.value);
   renderSubjectTabs('basicSubjectTabs', data.basicNotebooks, basicActiveSubject, (i)=>{ basicActiveSubject=i; basicActivePage=1; renderBasicNotebooks(); });
   scheduleSave();
 });
@@ -855,7 +855,7 @@ function renderFormalNotebooks(){
   loadFormalPage();
 }
 document.getElementById('formalSubjectName').addEventListener('input', (e)=>{
-  data.formalNotebooks[formalActiveSubject].name = e.target.value || `Subject ${formalActiveSubject+1}`;
+  syncSubjectRename(formalActiveSubject, e.target.value);
   renderSubjectTabs('formalSubjectTabs', data.formalNotebooks, formalActiveSubject, (i)=>{ formalActiveSubject=i; formalActivePage=1; renderFormalNotebooks(); });
   scheduleSave();
 });
@@ -1018,7 +1018,7 @@ function renderFlashViewer(){
 function toggleFlip(){ flashFlipped = !flashFlipped; renderFlashViewer(); }
 function renderFlashAll(){ renderFlashStackTabs(); renderFlashCount(); renderFlashViewer(); }
 document.getElementById('flashStackName').addEventListener('input', (e)=>{
-  data.flashcardStacks[flashActiveStack].name = e.target.value || `Subject ${flashActiveStack+1}`;
+  syncSubjectRename(flashActiveStack, e.target.value);
   renderSubjectTabs('flashStackTabs', data.flashcardStacks, flashActiveStack, (i)=>{ flashActiveStack=i; flashActiveCard=0; flashFlipped=false; renderFlashAll(); });
   scheduleSave();
 });
@@ -1291,7 +1291,7 @@ function renderMindmap(){
   document.getElementById('mindmapViewport').scrollTop = 0;
 }
 document.getElementById('mmSubjectName').addEventListener('input', (e)=>{
-  activeMM().name = e.target.value || `Subject ${mmActiveSubject+1}`;
+  syncSubjectRename(mmActiveSubject, e.target.value);
   renderSubjectTabs('mmSubjectTabs', data.mindmaps, mmActiveSubject, (i)=>{ mmActiveSubject=i; renderMindmap(); });
   scheduleSave();
 });
@@ -1419,7 +1419,7 @@ function renderQSubjectTabs(){
   document.getElementById('qSubjectName').value = data.questionLog.subjects[qActiveSubject].name;
 }
 document.getElementById('qSubjectName').addEventListener('input', (e)=>{
-  data.questionLog.subjects[qActiveSubject].name = e.target.value || `Subject ${qActiveSubject+1}`;
+  syncSubjectRename(qActiveSubject, e.target.value);
   renderQSubjectTabs();
   renderPtSubjectSelect();
   scheduleSave();
@@ -1767,6 +1767,7 @@ function applyDarkMode(on){
 document.getElementById('accountBtn').addEventListener('click', ()=>{
   document.getElementById('settingsName').value = data.displayName || document.getElementById('userName').textContent;
   document.getElementById('darkModeToggle').checked = data.lightMode || false;
+  renderSettingsSubjects();
   // moderation panel is host-only; the DB policies enforce this too, so
   // hiding it here is convenience, not the actual security boundary
   const modPanel = document.getElementById('hostModPanel');
@@ -1834,6 +1835,13 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
     return;
   }
   if(newName){ data.displayName = newName; document.getElementById('userName').textContent = newName; }
+  const subjectInputs = Array.from(document.querySelectorAll('.settingsSubjectInput'));
+  if(subjectInputs.length === 5){
+    const names = subjectInputs.map(inp=>inp.value);
+    const badSubject = names.find(n=>n && containsBlockedWord(n));
+    if(badSubject){ showToast("That subject name isn't allowed — subject names show up on decks you share."); return; }
+    applySubjectNames(names);
+  }
   data.lightMode = light;
   applyDarkMode(light);
   // also save the name back to the profiles table
@@ -1845,6 +1853,7 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
   // the browser can kill the page before that delayed save ever fires,
   // silently losing the dark mode preference. Save immediately instead.
   await saveData();
+  await renderAll();   // subject renames touch every tab, so redraw them all
   document.getElementById('accountModal').style.display='none';
   showToast('Settings saved.');
 });
@@ -2484,7 +2493,7 @@ function gtRemoveEntry(kind, i){
   renderGradeTracker(); scheduleSave();
 }
 document.getElementById('gtSubjectName').addEventListener('input', (e)=>{
-  data.gradeTracker.subjects[gtActiveSubject].name = e.target.value || `Subject ${gtActiveSubject+1}`;
+  syncSubjectRename(gtActiveSubject, e.target.value);
   renderSubjectTabs('gtSubjectTabs', data.gradeTracker.subjects, gtActiveSubject, (i)=>{ gtActiveSubject=i; renderGradeTracker(); });
   scheduleSave();
 });
@@ -2783,6 +2792,48 @@ document.getElementById('submitReportBtn')?.addEventListener('click', async ()=>
     showToast('Report sent — thank you. It will be reviewed.');
   }catch(e){ showToast('Could not send the report. (Has migration_5.sql been run?)'); }
 });
+
+/* ===================== MASTER SUBJECT NAMES ===================== */
+// Subjects used to be named separately in six places (basic notes, formal
+// notes, flashcards, mind maps, question log, grades) — 30 renames to set up
+// five subjects. These are now driven from one list in Settings.
+function getSubjectNames(){
+  if(Array.isArray(data.subjectNames) && data.subjectNames.length===5) return data.subjectNames.slice();
+  // derive from whatever the account already had, so existing users keep
+  // any names they'd already typed in
+  return [0,1,2,3,4].map(i =>
+    (data.questionLog?.subjects?.[i]?.name) ||
+    (data.basicNotebooks?.[i]?.name) ||
+    `Subject ${i+1}`
+  );
+}
+function applySubjectNames(names){
+  names.forEach((raw,i)=>{
+    const name = (raw||'').trim() || `Subject ${i+1}`;
+    if(data.basicNotebooks?.[i]) data.basicNotebooks[i].name = name;
+    if(data.formalNotebooks?.[i]) data.formalNotebooks[i].name = name;
+    if(data.flashcardStacks?.[i]) data.flashcardStacks[i].name = name;
+    if(data.mindmaps?.[i]) data.mindmaps[i].name = name;
+    if(data.questionLog?.subjects?.[i]) data.questionLog.subjects[i].name = name;
+    if(data.gradeTracker?.subjects?.[i]) data.gradeTracker.subjects[i].name = name;
+  });
+  data.subjectNames = names.map((raw,i)=>(raw||'').trim() || `Subject ${i+1}`);
+}
+// Renaming from any individual tab writes through to the master list, so all
+// six places stay in step no matter where the rename happens.
+function syncSubjectRename(index, value){
+  const names = getSubjectNames();
+  names[index] = value;
+  applySubjectNames(names);
+}
+function renderSettingsSubjects(){
+  const wrap = document.getElementById('settingsSubjects');
+  if(!wrap) return;
+  const names = getSubjectNames();
+  wrap.innerHTML = names.map((n,i)=>
+    `<input class="settingsSubjectInput" data-i="${i}" value="${String(n).replace(/"/g,'&quot;')}" placeholder="Subject ${i+1}" style="margin-bottom:6px;">`
+  ).join('');
+}
 
 /* ---- HOST: report review (Settings) ---- */
 let hostShowResolved = false;

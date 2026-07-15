@@ -86,6 +86,13 @@ answers any time it's open. Tab visibility updates on login / window change
 (a reload shows it appearing or disappearing); stats are a snapshot on open
 or Refresh, not a live stream.
 
+**Subjects** — named once in Account settings and applied everywhere: basic
+notes, formal notes, flashcards, mind maps, question log, and grades. The
+per-tab rename fields still work and write back to the same master list, so
+renaming anywhere renames everywhere. Blank falls back to "Subject N".
+Subject names are filtered like display names, since they appear on shared
+decks.
+
 **Data backup** — Account settings → "Download my data" exports everything
 as JSON; "Restore from backup" replaces the account contents from that file
 (confirmation required, cannot be undone). There is no automatic backup —
