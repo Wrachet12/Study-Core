@@ -98,7 +98,15 @@ downloading periodically is the only safety net against a database mistake.
   out AND again on the way in, so decks shared before the filters existed are
   still caught. **All links are blocked in shared content** — that's the main
   vector for "innocent-looking deck that points somewhere bad."
-- A Report button files a report to the host (`content_reports` table).
+- Report buttons exist in four places: on any leaderboard row (reports the
+  display name), on an imported flashcard stack, on an imported practice
+  test, and in the import popup. Reports write to `content_reports`.
+- **Host review panel** — Account settings shows a Reports section visible
+  only to the host email: read open reports, see a snapshot of the offending
+  content, delete the shared deck outright, or mark reviewed. (The DB
+  policies enforce host-only access; hiding the panel is just convenience.)
+- **Leaderboard search** — find someone by name in either the Friends or
+  Global list; results show their real rank and stats, with a Report button.
 - **The filter is not the real protection.** A client-side wordlist catches
   careless and obvious cases; anyone determined can work around it. The real
   backstop is reports + the host being able to delete any shared deck. If the

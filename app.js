@@ -960,6 +960,28 @@ function renderFlashCount(){
   const stack = data.flashcardStacks[flashActiveStack];
   document.getElementById('flashCount').textContent = `${stack.cards.length} / 150 cards in this stack`;
   document.getElementById('flashAddBtn').disabled = stack.cards.length >= 150;
+  // If this stack came from someone else, surface who shared it and let the
+  // user report it right here — not just in the import popup.
+  const banner = document.getElementById('flashImportedBanner');
+  if(banner){
+    if(stack.importedFrom){
+      banner.style.display = '';
+      banner.innerHTML = `<span style="font-size:.75rem;color:#999;">Shared by ${String(stack.importedFrom.owner).replace(/</g,'&lt;')}</span>
+        <button class="btn small red" style="padding:4px 8px;font-size:.62rem;" onclick="reportStack(${flashActiveStack})">Report this stack</button>`;
+    } else { banner.style.display='none'; banner.innerHTML=''; }
+  }
+}
+function reportStack(i){
+  const s = data.flashcardStacks[i];
+  if(!s || !s.importedFrom) return;
+  openReportModal('shared_deck', s.importedFrom.code, s.importedFrom.owner, { name:s.name, cards:s.cards });
+}
+function reportTest(id){
+  const t = data.questionLog.practiceTests.find(t=>t.id===id);
+  if(!t || !t.importedFrom) return;
+  const subj = data.questionLog.subjects[t.subjectIndex];
+  const questions = t.questionIds.map(qid=>{ for(const n of [1,2,3,4]){ const f=subj.terms[n].find(q=>q.id===qid); if(f) return f; } return null; }).filter(Boolean);
+  openReportModal('shared_deck', t.importedFrom.code, t.importedFrom.owner, { name:t.name, questions });
 }
 function renderFlashViewer(){
   const stack = data.flashcardStacks[flashActiveStack];
@@ -1073,6 +1095,8 @@ document.getElementById('importStackBtn').addEventListener('click', async ()=>{
       const target = emptyStack>-1 ? emptyStack : 0;
       data.flashcardStacks[target].name = payload.name || 'Imported';
       data.flashcardStacks[target].cards = payload.cards.map(c=>({...c, id: (data.flashcardSeq = (data.flashcardSeq||0)+1)}));
+      // remember where it came from so a Report button can appear on it
+      data.flashcardStacks[target].importedFrom = { code, owner: deck.owner_name || 'Unknown' };
       flashActiveStack = target; flashActiveCard=0; flashFlipped=false;
       renderFlashAll();
       showToast(`Imported "${payload.name}" into Stack ${target+1}.`);
@@ -1094,7 +1118,7 @@ document.getElementById('importStackBtn').addEventListener('click', async ()=>{
         subj.terms[qActiveTerm].push(newQ);
         return newQ.id;
       });
-      data.questionLog.practiceTests.push({ id: (data.questionLog.testSeq = (data.questionLog.testSeq||0)+1), name: payload.name||'Imported test', subjectIndex: qActiveSubject, term: qActiveTerm, questionIds: newIds });
+      data.questionLog.practiceTests.push({ id: (data.questionLog.testSeq = (data.questionLog.testSeq||0)+1), name: payload.name||'Imported test', subjectIndex: qActiveSubject, term: qActiveTerm, questionIds: newIds, importedFrom: { code, owner: deck.owner_name || 'Unknown' } });
       renderQList(); renderPtList(); updateQCountTip();
       showToast(`Imported practice test "${payload.name}" into ${subj.name}, Term ${qActiveTerm}.`);
     } else {
@@ -1743,6 +1767,13 @@ function applyDarkMode(on){
 document.getElementById('accountBtn').addEventListener('click', ()=>{
   document.getElementById('settingsName').value = data.displayName || document.getElementById('userName').textContent;
   document.getElementById('darkModeToggle').checked = data.lightMode || false;
+  // moderation panel is host-only; the DB policies enforce this too, so
+  // hiding it here is convenience, not the actual security boundary
+  const modPanel = document.getElementById('hostModPanel');
+  if(modPanel){
+    modPanel.style.display = isFeedbackHost() ? '' : 'none';
+    if(isFeedbackHost()) loadHostReports();
+  }
   document.getElementById('accountModal').style.display='flex';
 });
 document.getElementById('closeSettingsBtn').addEventListener('click', ()=>{ document.getElementById('accountModal').style.display='none'; });
@@ -2172,6 +2203,19 @@ function renderFriends(){
   friendWrap.innerHTML = friends.length ? friends.map(f=>`<div class="friend-row"><span>${f.name.replace(/</g,'&lt;')}</span><button class="btn small ghost" onclick="removeFriend('${f.id}')">Remove</button></div>`).join('') : '<p style="color:#8f8f8f;font-size:.82rem;">No friends yet.</p>';
 }
 
+let lbRowsCache = [];
+function lbRowHtml(r, rank){
+  const me = r.id===currentUserId;
+  return `<div class="lb-row ${me?'lb-me':''}">
+    <span class="lb-rank">${rank}</span>
+    <span class="lb-name">${r.name.replace(/</g,'&lt;')}${me?' (you)':''}</span>
+    <span class="lb-xp">Lv ${r.level} · ${r.xp} XP</span>
+    ${me?'':`<button class="btn small red" style="padding:4px 8px;font-size:.62rem;" onclick="reportUser('${r.id}', ${JSON.stringify(r.name).replace(/"/g,'&quot;')})">Report</button>`}
+  </div>`;
+}
+function reportUser(userId, name){
+  openReportModal('display_name', userId, name, { name, reportedFrom:'leaderboard' });
+}
 async function renderLeaderboard(){
   const wrap = document.getElementById('leaderboard');
   wrap.innerHTML = '<p style="color:#8f8f8f;font-size:.82rem;">Loading…</p>';
@@ -2192,9 +2236,28 @@ async function renderLeaderboard(){
       rows = (profiles||[]).map(p=>({ id:p.id, name:p.name||'Student', xp:p.xp||0, level:p.level||1 }));
     }
     rows.sort((a,b)=>b.xp-a.xp);
-    wrap.innerHTML = rows.length ? rows.map((r,i)=>`<div class="lb-row ${r.id===currentUserId?'lb-me':''}"><span class="lb-rank">${i+1}</span><span class="lb-name">${r.name.replace(/</g,'&lt;')}${r.id===currentUserId?' (you)':''}</span><span class="lb-xp">Lv ${r.level} · ${r.xp} XP</span></div>`).join('') : '<p style="color:#8f8f8f;font-size:.82rem;">Nobody to show yet.</p>';
+    lbRowsCache = rows;
+    wrap.innerHTML = rows.length ? rows.map((r,i)=>lbRowHtml(r, i+1)).join('') : '<p style="color:#8f8f8f;font-size:.82rem;">Nobody to show yet.</p>';
+    renderLbSearch();
   }catch(e){ wrap.innerHTML='<p style="color:var(--red);font-size:.82rem;">Could not load leaderboard.</p>'; }
 }
+// Search within whichever leaderboard is showing (Friends or Global). Ranks
+// shown are the person's real rank in that list, not their position in the
+// filtered results.
+function renderLbSearch(){
+  const input = document.getElementById('lbSearch');
+  const out = document.getElementById('lbSearchResults');
+  if(!input || !out) return;
+  const q = input.value.trim().toLowerCase();
+  if(!q){ out.innerHTML=''; return; }
+  const hits = lbRowsCache
+    .map((r,i)=>({ r, rank:i+1 }))
+    .filter(x=>x.r.name.toLowerCase().includes(q));
+  out.innerHTML = hits.length
+    ? `<div style="margin-top:8px;">${hits.map(x=>lbRowHtml(x.r, x.rank)).join('')}</div>`
+    : `<p style="color:#8f8f8f;font-size:.8rem;margin-top:8px;">No one by that name in this list. ${lbMode==='friends'?'Try the Global tab.':''}</p>`;
+}
+document.getElementById('lbSearch')?.addEventListener('input', renderLbSearch);
 
 /* ===================== PRACTICE TEST SHARE ===================== */
 function renderPtList(){
@@ -2207,12 +2270,13 @@ function renderPtList(){
     return `<div class="pt-card">
       <div style="flex:1;min-width:200px;">
         <input value="${t.name.replace(/"/g,'&quot;')}" onchange="renameTest(${t.id}, this.value)">
-        <div style="font-size:.75rem;color:#999;margin-top:4px;">${subjName} · Term ${t.term} · ${t.questionIds.length} question(s)</div>
+        <div style="font-size:.75rem;color:#999;margin-top:4px;">${subjName} · Term ${t.term} · ${t.questionIds.length} question(s)${t.importedFrom?` · shared by ${String(t.importedFrom.owner).replace(/</g,'&lt;')}`:''}</div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="btn small green" onclick="startPracticeTest(${t.id})">Start</button>
         <button class="btn small blue" onclick="sharePracticeTest(${t.id})">Share</button>
         <button class="btn small red" onclick="deleteTest(${t.id})">Delete</button>
+        ${t.importedFrom?`<button class="btn small red" style="padding:4px 8px;font-size:.62rem;" onclick="reportTest(${t.id})">Report</button>`:''}
       </div>
     </div>`;
   }).join('');
@@ -2718,6 +2782,62 @@ document.getElementById('submitReportBtn')?.addEventListener('click', async ()=>
     document.getElementById('reportModal').style.display='none';
     showToast('Report sent — thank you. It will be reviewed.');
   }catch(e){ showToast('Could not send the report. (Has migration_5.sql been run?)'); }
+});
+
+/* ---- HOST: report review (Settings) ---- */
+let hostShowResolved = false;
+function reportKindLabel(k){ return {shared_deck:'Shared deck', display_name:'Display name', other:'Other'}[k]||k; }
+function summarizeSnapshot(s){
+  if(!s) return '';
+  if(s.name && Array.isArray(s.cards)) return `Deck "${s.name}" — ${s.cards.length} card(s): ` + s.cards.slice(0,3).map(c=>`${c.front} / ${c.back}`).join(' | ');
+  if(s.name && Array.isArray(s.questions)) return `Test "${s.name}" — ${s.questions.length} question(s): ` + s.questions.slice(0,3).map(q=>q.prompt).join(' | ');
+  if(s.name) return `Name: ${s.name}`;
+  return JSON.stringify(s).slice(0,160);
+}
+async function loadHostReports(){
+  const wrap = document.getElementById('hostReportList');
+  wrap.innerHTML = '<p style="font-size:.8rem;color:#999;">Loading…</p>';
+  try{
+    let q = sb.from('content_reports').select('*').order('created_at',{ascending:false}).limit(100);
+    if(!hostShowResolved) q = q.eq('status','open');
+    const { data: reports, error } = await q;
+    if(error) throw error;
+    if(!reports || reports.length===0){ wrap.innerHTML = `<p style="font-size:.8rem;color:#999;">No ${hostShowResolved?'':'open '}reports.</p>`; return; }
+    wrap.innerHTML = reports.map(r=>`
+      <div style="border:1px solid var(--paper-line);border-radius:10px;padding:10px;margin-bottom:8px;font-size:.78rem;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <strong>${reportKindLabel(r.kind)}</strong>
+          <span style="color:#999;">${new Date(r.created_at).toLocaleDateString()}${r.status!=='open'?` · ${r.status}`:''}</span>
+        </div>
+        ${r.target_owner_name?`<div style="color:#999;">By: ${String(r.target_owner_name).replace(/</g,'&lt;')}</div>`:''}
+        <div style="margin:5px 0;">"${String(r.details||'').replace(/</g,'&lt;')}"</div>
+        <div style="color:#999;font-size:.72rem;word-break:break-word;">${summarizeSnapshot(r.snapshot).replace(/</g,'&lt;')}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+          ${r.kind==='shared_deck'&&r.target_ref?`<button class="btn small red" style="padding:4px 8px;font-size:.62rem;" onclick="hostDeleteDeck('${r.target_ref}', ${r.id})">Delete that deck</button>`:''}
+          ${r.status==='open'?`<button class="btn small ghost" style="padding:4px 8px;font-size:.62rem;" onclick="hostSetReportStatus(${r.id},'reviewed')">Mark reviewed</button>`:''}
+        </div>
+      </div>`).join('');
+  }catch(e){ wrap.innerHTML = '<p style="font-size:.8rem;color:var(--red);">Could not load reports. (Has migration_5.sql been run?)</p>'; }
+}
+async function hostSetReportStatus(id, status){
+  try{ await sb.from('content_reports').update({ status }).eq('id', id); loadHostReports(); }
+  catch(e){ showToast('Update failed.'); }
+}
+async function hostDeleteDeck(shareCode, reportId){
+  if(!confirm('Delete this shared deck permanently? Anyone with the code will no longer be able to import it.')) return;
+  try{
+    const { error } = await sb.from('shared_decks').delete().eq('share_code', shareCode);
+    if(error) throw error;
+    await sb.from('content_reports').update({ status:'removed' }).eq('id', reportId);
+    showToast('Deck deleted.');
+    loadHostReports();
+  }catch(e){ showToast('Could not delete — has migration_5.sql been run?'); }
+}
+document.getElementById('loadReportsBtn')?.addEventListener('click', loadHostReports);
+document.getElementById('toggleResolvedReportsBtn')?.addEventListener('click', (e)=>{
+  hostShowResolved = !hostShowResolved;
+  e.target.textContent = hostShowResolved ? 'Show open only' : 'Show reviewed';
+  loadHostReports();
 });
 
 /* ===================== DATA BACKUP ===================== */

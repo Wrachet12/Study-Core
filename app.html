@@ -6,7 +6,7 @@
 <title>StudyCore — Plan, Time, Note, Learn</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=14">
+<link rel="stylesheet" href="styles.css?v=15">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5483196886768719" crossorigin="anonymous"></script>
 </head>
 <body>
@@ -87,6 +87,15 @@
     <div style="display:flex;gap:10px;margin-top:18px;">
       <button class="btn amber" id="saveSettingsBtn">Save</button>
       <button class="btn ghost" id="closeSettingsBtn">Cancel</button>
+    </div>
+    <div id="hostModPanel" style="display:none;">
+      <hr style="margin:18px 0;border:none;border-top:1px solid var(--paper-line);">
+      <label>Reports (host only)</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <button class="btn ghost small" id="loadReportsBtn">Load reports</button>
+        <button class="btn ghost small" id="toggleResolvedReportsBtn">Show reviewed</button>
+      </div>
+      <div id="hostReportList" style="max-height:280px;overflow-y:auto;"></div>
     </div>
   </div>
 </div>
@@ -197,6 +206,7 @@
       <button class="btn ghost small" id="flashShareBtn">► Share stack</button>
       <button class="btn ghost small" id="flashImportBtn">◄ Import stack</button>
     </div>
+    <div id="flashImportedBanner" style="display:none;align-items:center;gap:10px;margin-top:8px;"></div>
     <div id="flashViewer" style="margin-top:16px;"></div>
   </div>
 
@@ -589,6 +599,9 @@
       <button class="pill-toggle" id="lbGlobalBtn" data-lb="global">Global</button>
     </div>
     <div id="leaderboard"></div>
+    <label style="margin-top:12px;">Find someone</label>
+    <input id="lbSearch" placeholder="Search by name — shows their rank and stats">
+    <div id="lbSearchResults"></div>
   </div>
 </section>
 
@@ -756,8 +769,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=14"></script>
-<script src="app.js?v=14"></script>
+<script src="config.js?v=15"></script>
+<script src="app.js?v=15"></script>
 <script>
   if(location.hash === '#signup'){ try{ switchAuthTab('signup'); }catch(e){} }
 </script>
