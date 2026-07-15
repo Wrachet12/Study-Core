@@ -70,6 +70,7 @@ document.getElementById('signupForm').addEventListener('submit', async (e)=>{
   const errEl = document.getElementById('signupError');
   if(pw.length<8){ errEl.textContent='Password needs at least 8 characters.'; return; }
   if(pw!==confirm){ errEl.textContent="Passwords don't match."; return; }
+  if(name && containsBlockedWord(name)){ errEl.textContent="That name isn't allowed — other students can see it."; return; }
   errEl.textContent='';
   submitBtn.disabled = true; submitBtn.textContent = 'Creating account…';
   try{
@@ -183,6 +184,8 @@ async function loadProfileAndEnter(userId, email){
   document.getElementById('appShell').style.display='block';
   document.getElementById('userName').textContent = profile.name || (email ? email.split('@')[0] : 'Student');
   await renderAll();
+  // first-time users get the walkthrough; everyone else goes straight in
+  if(!data.onboarded) setTimeout(startOnboarding, 400);
 }
 
 document.getElementById('logoutBtn').addEventListener('click', async ()=>{
@@ -1025,7 +1028,10 @@ async function shareViaTable(kind, title, payload){
 document.getElementById('flashShareBtn').addEventListener('click', ()=>{
   const stack = data.flashcardStacks[flashActiveStack];
   if(!stack.cards.length){ showToast('This stack has no cards to share yet.'); return; }
-  shareViaTable('flashcards', stack.name, { name: stack.name, cards: stack.cards });
+  const payload = { name: stack.name, cards: stack.cards };
+  const problem = validateShareable(payload);
+  if(problem){ showToast(problem); return; }
+  shareViaTable('flashcards', stack.name, payload);
 });
 document.getElementById('closeShareModal').addEventListener('click', ()=>{ document.getElementById('shareModal').style.display='none'; });
 document.getElementById('copyShareCodeBtn').addEventListener('click', ()=>{
@@ -1051,6 +1057,15 @@ document.getElementById('importStackBtn').addEventListener('click', async ()=>{
     const { data: rows } = await sb.from('shared_decks').select('*').eq('share_code', code).limit(1);
     if(!rows || rows.length===0){ showToast('Invalid share code — check and try again.'); return; }
     const deck = rows[0];
+    // Scan on the way IN as well as on the way out — decks shared before
+    // these filters existed, or by a modified client, still get caught here.
+    const incomingProblem = validateShareable(deck.payload || {});
+    if(incomingProblem){
+      lastBlockedDeck = { code, owner: deck.owner_name, payload: deck.payload };
+      showToast(incomingProblem + ' This deck was not imported.');
+      document.getElementById('reportBlockedBtn').style.display = 'inline-block';
+      return;
+    }
     if(deck.kind === 'flashcards'){
       const payload = deck.payload;
       if(!payload.cards || !Array.isArray(payload.cards) || payload.cards.length===0){ showToast('This shared stack has no cards.'); return; }
@@ -1086,9 +1101,16 @@ document.getElementById('importStackBtn').addEventListener('click', async ()=>{
       throw new Error('Unknown deck kind');
     }
     scheduleSave();
+    lastImported = { code, owner: deck.owner_name, payload: deck.payload };
+    document.getElementById('reportBlockedBtn').style.display = 'inline-block';
     document.getElementById('importCodeInput').value='';
-    document.getElementById('importModal').style.display='none';
   }catch(e){ showToast('Invalid share code — check and try again.'); }
+});
+let lastBlockedDeck = null, lastImported = null;
+document.getElementById('reportBlockedBtn')?.addEventListener('click', ()=>{
+  const d = lastBlockedDeck || lastImported;
+  if(!d){ showToast('Import a deck first, then you can report it.'); return; }
+  openReportModal('shared_deck', d.code, d.owner, d.payload);
 });
 document.getElementById('flashAddBtn').addEventListener('click', ()=>{
   const stack = data.flashcardStacks[flashActiveStack];
@@ -1776,6 +1798,10 @@ document.getElementById('closeAchievementLogX').addEventListener('click', ()=>{ 
 document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
   const newName = document.getElementById('settingsName').value.trim();
   const light = document.getElementById('darkModeToggle').checked;
+  if(newName && containsBlockedWord(newName)){
+    showToast("That display name isn't allowed — other students can see it.");
+    return;
+  }
   if(newName){ data.displayName = newName; document.getElementById('userName').textContent = newName; }
   data.lightMode = light;
   applyDarkMode(light);
@@ -2202,7 +2228,10 @@ function sharePracticeTest(id){
   // test with the right name/term and zero questions). Catch that here
   // instead of silently sharing a broken deck.
   if(questions.length === 0){ showToast('This test has no questions to share — its questions may have been deleted.'); return; }
-  shareViaTable('practice_test', test.name, { name: test.name, questions });
+  const ptPayload = { name: test.name, questions };
+  const ptProblem = validateShareable(ptPayload);
+  if(ptProblem){ showToast(ptProblem); return; }
+  shareViaTable('practice_test', test.name, ptPayload);
 }
 
 /* ===================== MISTAKE LOG — MANUAL ADD ===================== */
@@ -2579,6 +2608,160 @@ document.getElementById('icsImportBtn').addEventListener('click', ()=>{
   document.getElementById('icsFileInput').value='';
   renderTasks();
   scheduleSave();
+});
+
+/* ===================== FIRST-LOGIN WALKTHROUGH ===================== */
+const ONBOARD_STEPS = [
+  { title:'Welcome to StudyCore',
+    body:"There's a lot in here, so here's the 30-second version. StudyCore is built around one idea: beat procrastination by making the work small, scheduled, and reviewed. You can revisit this tour any time from Account settings." },
+  { title:'1 · Planner — start here',
+    body:"Add an assignment with a due date and how much there is to do (pages, questions). StudyCore splits it across the days you have and tightens the deadline slightly — Parkinson's Law: work expands to fill the time you give it, so give it less.", tab:'planner' },
+  { title:'2 · Timer — actually do the work',
+    body:"A focus timer with breaks. Pick a length, hit start, and pick an ambient sound if silence bothers you. You earn XP for finishing sessions. You can also set your class bell schedule here." , tab:'timer' },
+  { title:'3 · Study — remember it later',
+    body:"Leitner boxes are spaced repetition: cards you get right move to a slower box, cards you miss come back sooner. Flashcards and mind maps live here too — 5 subjects each.", tab:'study' },
+  { title:'4 · Question Log — practice properly',
+    body:"Save questions per subject and term, build them into practice tests, and take them. Anything you miss lands in the Mistake Log so you can write down WHY you missed it — that's the part that actually works.", tab:'qlog' },
+  { title:"5 · You're set",
+    body:"Grades tracks your averages per term. Friends and the leaderboard let you compare XP with classmates — share your Friend ID from the Friends tab. Everything saves automatically to your account.", tab:'grades' },
+];
+let onboardIndex = 0;
+function renderOnboardStep(){
+  const step = ONBOARD_STEPS[onboardIndex];
+  document.getElementById('onboardTitle').textContent = step.title;
+  document.getElementById('onboardBody').textContent = step.body;
+  document.getElementById('onboardProgress').textContent = `${onboardIndex+1} of ${ONBOARD_STEPS.length}`;
+  document.getElementById('onboardNextBtn').textContent = onboardIndex === ONBOARD_STEPS.length-1 ? 'Finish' : 'Next';
+  if(step.tab) document.querySelector(`.tab[data-tab="${step.tab}"]`)?.click();
+}
+function startOnboarding(){
+  onboardIndex = 0;
+  renderOnboardStep();
+  document.getElementById('onboardModal').style.display = 'flex';
+}
+function finishOnboarding(){
+  document.getElementById('onboardModal').style.display = 'none';
+  document.querySelector('.tab[data-tab="home"]')?.click();
+  if(data){ data.onboarded = true; saveData(); }
+}
+document.getElementById('onboardNextBtn')?.addEventListener('click', ()=>{
+  if(onboardIndex >= ONBOARD_STEPS.length-1){ finishOnboarding(); return; }
+  onboardIndex++; renderOnboardStep();
+});
+document.getElementById('onboardSkipBtn')?.addEventListener('click', finishOnboarding);
+document.getElementById('replayTourBtn')?.addEventListener('click', ()=>{
+  document.getElementById('accountModal').style.display='none';
+  startOnboarding();
+});
+
+/* ===================== CONTENT SAFETY ===================== */
+// Honest framing: this catches careless and obvious cases. Anyone determined
+// can work around a client-side filter, which is why the report button and
+// host review (migration_5.sql) exist as the real backstop.
+const BLOCKED_WORDS = [
+  'fuck','shit','bitch','cunt','asshole','dick','pussy','slut','whore','fag',
+  'nigger','nigga','retard','rape','nazi','kys','porn','pornhub','onlyfans','xxx','sex','nude','nudes'
+];
+function normalizeForFilter(s){
+  return (s||'').toLowerCase()
+    .replace(/[4@]/g,'a').replace(/[3]/g,'e').replace(/[1!|]/g,'i')
+    .replace(/[0]/g,'o').replace(/[5$]/g,'s').replace(/[7]/g,'t')
+    .replace(/[^a-z]/g,'');   // strip spacing/punctuation tricks
+}
+function containsBlockedWord(s){
+  const n = normalizeForFilter(s);
+  return BLOCKED_WORDS.some(w=>n.includes(w));
+}
+// The main vector for "hidden messages leading to somewhere bad" is a link
+// smuggled into shared content — so links are blocked in anything shareable.
+const URL_RE = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|gg|ly|me|xyz|link|tk|ru|info|site|club|to|cc)\b)/i;
+function containsLink(s){ return URL_RE.test(s||''); }
+function deckTextBlob(payload){
+  const parts = [payload.name||''];
+  (payload.cards||[]).forEach(c=>{ parts.push(c.front||'', c.back||'', c.category||''); });
+  (payload.questions||[]).forEach(q=>{
+    parts.push(q.prompt||'', q.category||'', String(q.answer||''));
+    (q.options||[]).forEach(o=>parts.push(o||''));
+  });
+  return parts.join(' \n ');
+}
+// Returns an error string if the content shouldn't be shared, else null.
+function validateShareable(payload){
+  const blob = deckTextBlob(payload);
+  if(containsLink(blob)) return "Links aren't allowed in shared content — please remove any web addresses first.";
+  if(containsBlockedWord(blob)) return "This contains language that can't be shared. Please clean it up first.";
+  return null;
+}
+
+/* ---- Reporting ---- */
+let reportContext = null;
+function openReportModal(kind, ref, ownerName, snapshot){
+  reportContext = { kind, ref, ownerName, snapshot };
+  document.getElementById('reportDetails').value = '';
+  document.getElementById('reportModal').style.display = 'flex';
+}
+document.getElementById('closeReportModal')?.addEventListener('click', ()=>{ document.getElementById('reportModal').style.display='none'; });
+document.getElementById('submitReportBtn')?.addEventListener('click', async ()=>{
+  if(!reportContext) return;
+  const details = document.getElementById('reportDetails').value.trim();
+  if(!details){ showToast('Please say what the problem is.'); return; }
+  try{
+    const { error } = await sb.from('content_reports').insert({
+      reporter_id: currentUserId,
+      kind: reportContext.kind,
+      target_ref: reportContext.ref || null,
+      target_owner_name: reportContext.ownerName || null,
+      details,
+      snapshot: reportContext.snapshot || null
+    });
+    if(error) throw error;
+    document.getElementById('reportModal').style.display='none';
+    showToast('Report sent — thank you. It will be reviewed.');
+  }catch(e){ showToast('Could not send the report. (Has migration_5.sql been run?)'); }
+});
+
+/* ===================== DATA BACKUP ===================== */
+document.getElementById('exportDataBtn').addEventListener('click', ()=>{
+  if(!data){ showToast('Nothing to export yet.'); return; }
+  try{
+    const payload = { studycoreBackup:true, version:1, exportedAt:new Date().toISOString(), app_data:data };
+    const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `studycore-backup-${todayStr()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Backup downloaded.');
+  }catch(e){ showToast('Could not create the backup file.'); }
+});
+document.getElementById('restoreDataBtn').addEventListener('click', ()=>{
+  document.getElementById('restoreFileInput').click();
+});
+document.getElementById('restoreFileInput').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    if(!parsed || !parsed.studycoreBackup || !parsed.app_data) throw new Error('not a StudyCore backup');
+    // Restoring REPLACES everything currently in the account — make that
+    // impossible to do by accident.
+    const ok = confirm(
+      "Restore this backup?\n\nThis REPLACES everything currently in your account " +
+      "(notes, flashcards, tasks, questions, grades) with the contents of the file.\n\n" +
+      "Backup date: " + (parsed.exportedAt ? parsed.exportedAt.slice(0,10) : 'unknown') +
+      "\n\nThis cannot be undone."
+    );
+    if(!ok){ e.target.value=''; return; }
+    data = Object.assign(newUserData(), parsed.app_data);
+    if(!data.schedule || !Array.isArray(data.schedule.blocks)) data.schedule = { blocks: [] };
+    await saveData();
+    await renderAll();
+    showToast('Backup restored.');
+  }catch(err){
+    showToast("That file isn't a valid StudyCore backup.");
+  }
+  e.target.value='';
 });
 
 /* ===================== DAILY FEEDBACK ===================== */

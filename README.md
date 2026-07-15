@@ -27,6 +27,8 @@ Run these once each in the Supabase SQL Editor, in order, if you haven't:
 - `migration_3.sql` — Friend IDs (adds `friend_code`, backfills all
   accounts, rebuilds the leaderboard view). If the view step errors, use the
   drop-and-recreate variant.
+- `migration_5.sql` — content reports (moderation backstop; also lets the
+  host delete any shared deck).
 - `migration_4.sql` — Daily Feedback (questions, responses, window config).
   Only the host email can author questions / open the window / read all
   responses. Host email is hard-referenced inside the file — if it changes,
@@ -84,6 +86,33 @@ answers any time it's open. Tab visibility updates on login / window change
 (a reload shows it appearing or disappearing); stats are a snapshot on open
 or Refresh, not a live stream.
 
+**Data backup** — Account settings → "Download my data" exports everything
+as JSON; "Restore from backup" replaces the account contents from that file
+(confirmation required, cannot be undone). There is no automatic backup —
+downloading periodically is the only safety net against a database mistake.
+
+**Content safety** — layered, and worth understanding honestly:
+- Display names are filtered at signup and in settings (normalizes leetspeak
+  and spacing, so `sh1t` and `f u c k` are caught).
+- Anything shared (flashcard decks, practice tests) is scanned before it goes
+  out AND again on the way in, so decks shared before the filters existed are
+  still caught. **All links are blocked in shared content** — that's the main
+  vector for "innocent-looking deck that points somewhere bad."
+- A Report button files a report to the host (`content_reports` table).
+- **The filter is not the real protection.** A client-side wordlist catches
+  careless and obvious cases; anyone determined can work around it. The real
+  backstop is reports + the host being able to delete any shared deck. If the
+  app grows beyond a friend group, this needs revisiting.
+
+**Onboarding** — first-time users get a 6-step walkthrough that jumps through
+Planner → Timer → Study → Question Log → Grades. Replayable from Account
+settings.
+
+**Mobile** — the app is laptop-first by design, but the layout now adapts:
+the top bar wraps, tabs scroll horizontally, everything goes single-column,
+tap targets hit 44px, inputs use 16px text to stop iOS zooming on focus, and
+wide tables scroll instead of squashing.
+
 **Privacy** — contact email hello-studycore-help@gmail.com.
 
 ---
@@ -98,6 +127,10 @@ the recap/achievement/account/logout controls.
 
 **Design v1 — Console Chrome** — earlier Nintendo-2001-style theme (since
 replaced).
+
+**Pre-launch hardening:** mobile/responsive layout pass; data export +
+restore; display-name and shared-content filtering (including link blocking);
+content reporting with host review; first-login walkthrough.
 
 **Fixes across rounds:**
 - Timezone bug: dates were computed in UTC, drifting "today" and breaking

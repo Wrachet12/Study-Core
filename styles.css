@@ -542,3 +542,82 @@ body.light-mode #weeklyRecapModal .modal-card, body.light-mode #achievementLogMo
 .fb-star:hover,.fb-star.on{color:#f5c518;}
 body.light-mode .fb-star{color:#c9d2e8;}
 body.light-mode .fb-star:hover,body.light-mode .fb-star.on{color:#f5b301;}
+
+/* ============================================================
+   MOBILE / TABLET — the app is laptop-first, but it has to be
+   usable on the phone it'll actually get opened on.
+   ============================================================ */
+@media(max-width:900px){
+  main{padding:18px 12px 60px;}
+  .card{padding:16px 14px;border-radius:15px;}
+  .row{gap:10px;}
+  .row > div{min-width:130px;}
+}
+@media(max-width:680px){
+  /* top bar: let it wrap into rows instead of crushing */
+  .topbar{flex-wrap:wrap;gap:8px;padding:10px 12px;}
+  .brand{font-size:1rem;order:1;flex:1;}
+  .userbox{order:2;border-left:none;padding-left:0;gap:6px;}
+  .topbar-center{order:4;flex-basis:100%;max-width:none;margin:0;display:block;}
+  .stats{order:3;flex-basis:100%;justify-content:space-between;gap:8px;
+    background:var(--surface);border-radius:100px;padding:6px 12px;}
+  .xpbar-wrap{flex:1;width:auto;min-width:60px;}
+  /* header buttons shrink to fit */
+  #weeklyRecapBtn,#achievementLogBtn{font-size:.66rem;padding:6px 9px;}
+  .brand #weeklyRecapBtn,.brand #achievementLogBtn{margin-left:4px;}
+  #accountBtn,#logoutBtn{font-size:.7rem;padding:6px 10px;}
+
+  /* tabs: horizontal scroll strip, no wrap, hide scrollbar */
+  .tabs{padding:6px 12px;gap:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .tabs::-webkit-scrollbar{display:none;}
+  .tab{padding:9px 13px;font-size:.8rem;}
+
+  /* touch targets: 44px minimum per spec */
+  .btn{padding:12px 16px;font-size:.8rem;}
+  .btn.small{padding:9px 12px;font-size:.72rem;}
+  .pill-toggle,.subtab,.subject-tabs button{padding:10px 14px;}
+  input,select,textarea{padding:12px 14px;font-size:16px;} /* 16px stops iOS zoom-on-focus */
+
+  /* single-column everything */
+  .home-grid{grid-template-columns:1fr;}
+  .timer-wrap{flex-direction:column;gap:18px;}
+  .timer-display{width:190px;height:190px;margin:0 auto;}
+  .timer-display .time{font-size:2.5rem;}
+  .formal-grid,.feynman-grid{grid-template-columns:1fr;grid-template-areas:"terms" "notes" "summary";}
+  #formalTerms{min-height:120px;}
+  .formal-grid textarea{min-height:200px;}
+  #basicNote{min-height:200px;}
+
+  /* mind map: shorter viewport so the page is still scrollable around it */
+  #mindmapViewport{height:340px;}
+
+  /* modals fill the screen properly */
+  .modal-card{width:calc(100vw - 24px);max-width:400px;padding:22px 18px;max-height:86vh;}
+  .auth-card{width:100%;max-width:400px;padding:24px 20px;}
+
+  /* wide tables scroll instead of squashing */
+  .daily-table,#gtOverviewTable{display:block;overflow-x:auto;white-space:nowrap;}
+
+  /* leitner boxes: horizontal scroll strip */
+  .boxes-wrap{gap:10px;}
+  .box-col{min-width:150px;}
+
+  /* calendar: keep 7 columns but compact */
+  .cal-grid{gap:2px;}
+  .cal-day{min-height:52px;padding:3px 4px;border-radius:6px;}
+  .cal-day-num{font-size:.68rem;}
+  .cal-event{font-size:.55rem;padding:1px 4px;}
+
+  .flip-card{min-height:140px;padding:22px 16px;font-size:.95rem;}
+  .lp-hero{padding:60px 18px 40px;}
+  .lp-hero h1{font-size:1.9rem;}
+  .lp-footer{flex-direction:column;gap:10px;text-align:center;}
+}
+@media(max-width:420px){
+  .stats{font-size:.75rem;}
+  .level-pill{padding:3px 9px;font-size:.7rem;}
+  .cal-day{min-height:44px;}
+  .cal-day-label{font-size:.6rem;}
+  .timer-display{width:165px;height:165px;}
+  .timer-display .time{font-size:2.1rem;}
+}

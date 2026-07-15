@@ -6,7 +6,7 @@
 <title>StudyCore — Plan, Time, Note, Learn</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=13">
+<link rel="stylesheet" href="styles.css?v=14">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5483196886768719" crossorigin="anonymous"></script>
 </head>
 <body>
@@ -75,6 +75,15 @@
       <input type="checkbox" id="darkModeToggle" style="width:auto;">
       Light mode (cream)
     </label>
+    <hr style="margin:18px 0;border:none;border-top:1px solid var(--paper-line);">
+    <label>Your data</label>
+    <p style="font-size:.75rem;color:#999;margin:0 0 8px;">Download a backup of everything — notes, flashcards, tasks, questions, grades. Keep it somewhere safe.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn ghost small" id="exportDataBtn">Download my data</button>
+      <button class="btn ghost small" id="restoreDataBtn">Restore from backup</button>
+      <button class="btn ghost small" id="replayTourBtn">Replay tour</button>
+      <input type="file" id="restoreFileInput" accept="application/json" style="display:none;">
+    </div>
     <div style="display:flex;gap:10px;margin-top:18px;">
       <button class="btn amber" id="saveSettingsBtn">Save</button>
       <button class="btn ghost" id="closeSettingsBtn">Cancel</button>
@@ -690,7 +699,37 @@
       <div style="flex:3"><input id="importCodeInput" placeholder="Paste share code"></div>
       <div style="flex:1"><button class="btn blue" id="importStackBtn" style="width:100%">Import</button></div>
     </div>
-    <div style="margin-top:14px;"><button class="btn ghost" id="closeImportModal">Close</button></div>
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn ghost" id="closeImportModal">Close</button>
+      <button class="btn red small" id="reportBlockedBtn" style="display:none;">Report this content</button>
+    </div>
+  </div>
+</div>
+
+<!-- First-login walkthrough -->
+<div id="onboardModal" class="modal-overlay" style="display:none;">
+  <div class="modal-card" style="width:420px;">
+    <h2 id="onboardTitle">Welcome to StudyCore</h2>
+    <div id="onboardBody" style="font-size:.9rem;line-height:1.5;color:#c9c9c9;min-height:120px;"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:10px;">
+      <span id="onboardProgress" style="font-size:.75rem;color:#999;"></span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn ghost small" id="onboardSkipBtn">Skip</button>
+        <button class="btn amber small" id="onboardNextBtn">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Report modal -->
+<div id="reportModal" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <button class="modal-close-x" id="closeReportModal" aria-label="Close">×</button>
+    <h2>Report content</h2>
+    <p style="font-size:.85rem;color:#999;">Tell us what's wrong with this. Reports go to the site owner for review.</p>
+    <label>What's the problem?</label>
+    <textarea id="reportDetails" style="min-height:90px;" placeholder="e.g. inappropriate language, a link to a bad site, harassment…"></textarea>
+    <div style="margin-top:14px;"><button class="btn amber" id="submitReportBtn">Send report</button></div>
   </div>
 </div>
 
@@ -717,8 +756,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script src="config.js?v=14"></script>
+<script src="app.js?v=14"></script>
 <script>
   if(location.hash === '#signup'){ try{ switchAuthTab('signup'); }catch(e){} }
 </script>
