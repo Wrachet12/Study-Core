@@ -170,9 +170,18 @@ downloading periodically is the only safety net against a database mistake.
   backstop is reports + the host being able to delete any shared deck. If the
   app grows beyond a friend group, this needs revisiting.
 
-**Onboarding** — first-time users get a 6-step walkthrough that jumps through
-Planner → Timer → Study → Question Log → Grades. Replayable from Account
-settings.
+**Today tab** — now shows a live clock (with seconds) under the date, next
+to the day of week/full date that was already there.
+
+**Search** — Daily Feedback is now searchable/navigable like every other tab.
+
+**Onboarding** — expanded to 9 steps: Welcome, Planner, Timer, Study,
+Question Log, Notes (pages-per-subject, image resize, fonts), Friends (both
+leaderboards, code + direct sharing, Friend IDs), a fun XP/streaks/
+achievements slide, and Today — landing on the closing slide, which now
+explains the search bar and lists the support email. Replayable from Account
+settings. (Also fixed: the old final slide still referenced the deleted
+Grades tab — that's gone now.)
 
 **Mobile** — the app is laptop-first by design, but the layout now adapts:
 the top bar wraps, tabs scroll horizontally, everything goes single-column,

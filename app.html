@@ -6,7 +6,7 @@
 <title>StudyCore — Plan, Time, Note, Learn</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=19">
+<link rel="stylesheet" href="styles.css?v=20">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5483196886768719" crossorigin="anonymous"></script>
 </head>
 <body>
@@ -121,7 +121,8 @@
 <section id="home" class="panel active">
   <div style="max-width:900px;margin:0 auto;">
     <h2 id="todayGreeting" style="font-size:1.6rem;margin-bottom:4px;"></h2>
-    <p id="todayDate" style="color:#999;font-size:.85rem;margin-bottom:20px;"></p>
+    <p id="todayDate" style="color:#999;font-size:.85rem;margin-bottom:2px;"></p>
+    <p id="todayClock" class="mono" style="color:var(--text-dim);font-size:1.1rem;font-weight:600;margin-bottom:20px;"></p>
     <div class="home-grid">
       <div class="card home-card">
         <h3>■ Due today / urgent</h3>
@@ -734,8 +735,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=19"></script>
-<script src="app.js?v=19"></script>
+<script src="config.js?v=20"></script>
+<script src="app.js?v=20"></script>
 <script>
   if(location.hash === '#signup'){ try{ switchAuthTab('signup'); }catch(e){} }
 </script>

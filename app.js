@@ -2081,6 +2081,7 @@ const navSearchItems = [
   { label:'Weekly recap', preview:'Your last 7 days at a glance', run:()=>openModalNav('weeklyRecapModal', renderWeeklyRecap) },
   { label:'Achievements', preview:'Unlockable milestones and badges', run:()=>openModalNav('achievementLogModal', renderAchievementLog) },
   { label:'Achievement log', preview:'Unlockable milestones and badges', run:()=>openModalNav('achievementLogModal', renderAchievementLog) },
+  { label:'Daily Feedback', preview:'Answer today\'s questions (open only sometimes)', run:()=>navTo('feedback') },
   { label:'Account', preview:'Your name, light mode, and settings', run:()=>openModalNav('accountModal', ()=>{
       document.getElementById('settingsName').value = data.displayName || document.getElementById('userName').textContent;
       document.getElementById('darkModeToggle').checked = data.lightMode || false;
@@ -2231,12 +2232,22 @@ document.addEventListener('click', (e)=>{
 });
 
 /* ===================== TODAY / HOME SCREEN ===================== */
+function tickTodayClock(){
+  const el = document.getElementById('todayClock');
+  if(!el) return;
+  const now = new Date();
+  let h = now.getHours(); const ampm = h>=12?'PM':'AM'; h = h%12; if(h===0) h=12;
+  const pad = n => String(n).padStart(2,'0');
+  el.textContent = `${h}:${pad(now.getMinutes())}:${pad(now.getSeconds())} ${ampm}`;
+}
+setInterval(tickTodayClock, 1000);
 function renderHome(){
   const now = new Date();
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   document.getElementById('todayGreeting').textContent = `Good ${now.getHours()<12?'morning':now.getHours()<17?'afternoon':'evening'}, ${data.displayName || document.getElementById('userName').textContent}`;
   document.getElementById('todayDate').textContent = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+  tickTodayClock();
 
   // Due today / urgent
   const today = todayStr();
@@ -2686,17 +2697,25 @@ document.getElementById('icsImportBtn').addEventListener('click', ()=>{
 /* ===================== FIRST-LOGIN WALKTHROUGH ===================== */
 const ONBOARD_STEPS = [
   { title:'Welcome to StudyCore',
-    body:"There's a lot in here, so here's the 30-second version. StudyCore is built around one idea: beat procrastination by making the work small, scheduled, and reviewed. You can revisit this tour any time from Account settings." },
+    body:"There's a lot in here, so here's the quick version. StudyCore is built around one idea: beat procrastination by making the work small, scheduled, and reviewed. You can revisit this tour any time from Account settings." },
   { title:'1 · Planner — start here',
-    body:"Add an assignment with a due date and how much there is to do (pages, questions). StudyCore splits it across the days you have and tightens the deadline slightly — Parkinson's Law: work expands to fill the time you give it, so give it less.", tab:'planner' },
+    body:"Add an assignment with a due date and how much there is to do (pages, questions). StudyCore splits it across the days you have and tightens the deadline slightly — inspired by Parkinson's Law: work expands to fill the time you give it, so give it less. You can also import assignments straight from a school calendar (.ics) file here.", tab:'planner' },
   { title:'2 · Timer — actually do the work',
-    body:"A focus timer with breaks. Pick a length, hit start, and pick an ambient sound if silence bothers you. You earn XP for finishing sessions. You can also set your class bell schedule here." , tab:'timer' },
+    body:"A focus timer with breaks, based on the real Pomodoro technique. Pick a length, hit start, and pick an ambient sound if silence bothers you — or upload your own. You earn XP for finishing sessions, and you can set your class bell schedule here too, with a live timeline of your day.", tab:'timer' },
   { title:'3 · Study — remember it later',
-    body:"Leitner boxes are spaced repetition: cards you get right move to a slower box, cards you miss come back sooner. Flashcards and mind maps live here too — 5 subjects each.", tab:'study' },
+    body:"Leitner boxes are real spaced-repetition: cards you get right move to a slower box, cards you miss come back sooner. Flashcards and mind maps live here too — 5 subjects each, so biology can connect to chemistry instead of living as a scrambled list.", tab:'study' },
   { title:'4 · Question Log — practice properly',
-    body:"Save questions per subject and term, build them into practice tests, and take them. Anything you miss lands in the Mistake Log so you can write down WHY you missed it — that's the part that actually works.", tab:'qlog' },
-  { title:"5 · You're set",
-    body:"Grades tracks your averages per term. Friends and the leaderboard let you compare XP with classmates — share your Friend ID from the Friends tab. Everything saves automatically to your account.", tab:'grades' },
+    body:"Save questions per subject and term, build them into practice tests, and take them. Anything you miss lands in the Mistake Log so you can write down WHY you missed it — using the Feynman technique (explain it simply enough to expose the gap) is that's the part that actually works.", tab:'qlog' },
+  { title:'5 · Notes — words and pictures',
+    body:"Each subject notebook holds up to 300 pages, so you've got real room to spread out. Notes support real images and sketches too — insert one, drag its corner to resize it, and pick a font and size for your writing. Text always wraps around the image instead of covering it.", tab:'notes', subtab:'basic' },
+  { title:'6 · Friends — compete a little',
+    body:"There are two leaderboards: Friends (just people you've added) and Global (everyone). Add a friend using their Friend ID — yours is shown right on the Friends tab so you can share it back. You can share a flashcard stack or practice test with a code anyone can type in, or send it directly to a friend you've already added — both work from the same Share button.", tab:'social' },
+  { title:'7 · XP, streaks, and achievements',
+    body:"Nearly everything you do here earns XP and levels you up — finishing a focus session, reviewing a Leitner card, adding a flashcard. Keep coming back daily and you build a streak. There are 16 achievements to unlock along the way — check Weekly Recap and Achievements from the buttons up top." },
+  { title:"8 · Today — your daily home base",
+    body:"The Today tab is where you'll land every time you open StudyCore — what's due, which Leitner cards are ready, your upcoming week, and your current class period if you've set up your bell schedule. When in doubt, start here.", tab:'home' },
+  { title:"You're all set",
+    body:"One more thing: the search bar up top isn't just for content — type a tab name, a subject, a flashcard stack, or a friend's name and it'll jump you straight there. Everything saves automatically to your account. Questions or something feels broken? Email hello-studycore-help@gmail.com." },
 ];
 let onboardIndex = 0;
 function renderOnboardStep(){
@@ -2706,6 +2725,7 @@ function renderOnboardStep(){
   document.getElementById('onboardProgress').textContent = `${onboardIndex+1} of ${ONBOARD_STEPS.length}`;
   document.getElementById('onboardNextBtn').textContent = onboardIndex === ONBOARD_STEPS.length-1 ? 'Finish' : 'Next';
   if(step.tab) document.querySelector(`.tab[data-tab="${step.tab}"]`)?.click();
+  if(step.subtab) document.querySelector(`.subtab[data-sub="${step.subtab}"]`)?.click();
 }
 function startOnboarding(){
   onboardIndex = 0;
