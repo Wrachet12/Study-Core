@@ -160,6 +160,17 @@ async function loadProfileAndEnter(userId, email){
     });
     data.notesImagesMigratedV1 = true;
   }
+  // Second step: pages moved from a plain HTML string to {html, images}, so
+  // resizable/draggable images can be embedded. Wrap whatever's left over.
+  if(!data.notesImagesMigratedV2){
+    (data.basicNotebooks||[]).forEach(nb=>{
+      Object.keys(nb.pages||{}).forEach(pg=>{
+        const v = nb.pages[pg];
+        if(typeof v === 'string') nb.pages[pg] = { html: v, images: [] };
+      });
+    });
+    data.notesImagesMigratedV2 = true;
+  }
   // BUGFIX (more robust): a flag alone only helps once it's actually saved —
   // if this is the first login since the fix shipped, the flag hasn't hit
   // the database yet, so it could still look like it reverted "one more
@@ -178,7 +189,7 @@ async function loadProfileAndEnter(userId, email){
   if(!profile.app_data || !profile.app_data.lifetimeStatsBackfilled){
     const flashcardCount = (data.flashcardStacks||[]).reduce((s,st)=>s+st.cards.length,0);
     const leitnerReviewEstimate = [2,3,4,5].reduce((s,box)=>s+((data.leitner[box]||[]).length*(box-1)),0);
-    const notesEditedEstimate = (data.basicNotebooks||[]).reduce((s,nb)=>s+Object.values(nb.pages).filter(p=>p&&p.trim()).length,0)
+    const notesEditedEstimate = (data.basicNotebooks||[]).reduce((s,nb)=>s+Object.values(nb.pages).filter(p=>p && (typeof p==='string' ? p.trim() : stripHtml(p.html).trim())).length,0)
       + (data.formalNotebooks||[]).reduce((s,nb)=>s+Object.values(nb.pages).filter(p=>p&&(p.terms||p.notes||p.summary)).length,0);
     const tasksCompletedEstimate = (data.tasks||[]).reduce((s,t)=>s+(t.doneDays?t.doneDays.length:0),0);
     const testsCompletedEstimate = (data.questionLog?.practiceTests||[]).length;
@@ -582,12 +593,6 @@ function tick(){
 // added so you can play your own local audio file instead — no upload to
 // any server, it just plays straight from your device.
 let audioCtx = null, ambientNodes = null, customAmbientBuffer = null;
-function makeNoiseBuffer(ctx, colorFn){
-  const bufferSize = 2*ctx.sampleRate;
-  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  colorFn(buffer.getChannelData(0));
-  return buffer;
-}
 function makeSoftLimiterCurve(){
   const n = 4096, curve = new Float32Array(n);
   for(let i=0;i<n;i++){ const x = (i*2)/n - 1; curve[i] = Math.tanh(x*1.5); }
@@ -613,64 +618,10 @@ function startAmbient(type, volume){
   gainNode.gain.linearRampToValueAtTime(volume, ctx.currentTime + 1.2); // gentle fade-in, no jarring burst
   limiter.connect(gainNode); gainNode.connect(ctx.destination);
   const nodes = [gainNode, limiter];
-  const whiteFill = out=>{ for(let i=0;i<out.length;i++) out[i]=Math.random()*2-1; };
-  // gentle master lowpass on every noise type — takes the harsh hiss off
-  const softener = ctx.createBiquadFilter(); softener.type='lowpass'; softener.frequency.value=4200;
-  softener.connect(limiter);
-  nodes.push(softener);
 
-  if(type==='white'){
-    const src = ctx.createBufferSource(); src.buffer = makeNoiseBuffer(ctx, whiteFill); src.loop=true;
-    src.connect(softener); src.start(); nodes.push(src);
-  } else if(type==='pink'){
-    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
-    const buffer = makeNoiseBuffer(ctx, out=>{
-      for(let i=0;i<out.length;i++){
-        const white = Math.random()*2-1;
-        b0=0.99886*b0+white*0.0555179; b1=0.99332*b1+white*0.0750759; b2=0.96900*b2+white*0.1538520;
-        b3=0.86650*b3+white*0.3104856; b4=0.55000*b4+white*0.5329522; b5=-0.7616*b5-white*0.0168980;
-        out[i]=(b0+b1+b2+b3+b4+b5+b6+white*0.5362)*0.11; b6=white*0.115926;
-      }
-    });
-    const src = ctx.createBufferSource(); src.buffer=buffer; src.loop=true;
-    src.connect(softener); src.start(); nodes.push(src);
-  } else if(type==='brown'){
-    // BUGFIX: the old ×3.5 amplification could push this well past ±1
-    // (hard clipping = crackling). ×2 plus the shared soft limiter keeps
-    // it loud enough without ever clipping harshly.
-    let lastOut=0;
-    const buffer = makeNoiseBuffer(ctx, out=>{
-      for(let i=0;i<out.length;i++){
-        const white = Math.random()*2-1;
-        lastOut = (lastOut + 0.02*white)/1.02;
-        out[i] = lastOut * 2;
-      }
-    });
-    const src = ctx.createBufferSource(); src.buffer=buffer; src.loop=true;
-    src.connect(softener); src.start(); nodes.push(src);
-  } else if(type==='rain'){
-    const src = ctx.createBufferSource(); src.buffer = makeNoiseBuffer(ctx, whiteFill); src.loop=true;
-    const filter = ctx.createBiquadFilter(); filter.type='bandpass'; filter.frequency.value=2200; filter.Q.value=0.5;
-    // BUGFIX: this used to sweep the filter frequency by ±800Hz, which
-    // sounded like a siren/wah pedal, not rain. A much smaller ±60Hz drift
-    // gives a natural, non-distracting texture instead.
-    const lfo = ctx.createOscillator(); lfo.frequency.value=0.1;
-    const lfoGain = ctx.createGain(); lfoGain.gain.value=60;
-    lfo.connect(lfoGain); lfoGain.connect(filter.frequency); lfo.start();
-    src.connect(filter); filter.connect(softener); src.start();
-    nodes.push(src, filter, lfo, lfoGain);
-  } else if(type==='ocean'){
-    const src = ctx.createBufferSource(); src.buffer = makeNoiseBuffer(ctx, whiteFill); src.loop=true;
-    const filter = ctx.createBiquadFilter(); filter.type='lowpass'; filter.frequency.value=350;
-    const waveGain = ctx.createGain(); waveGain.gain.value=0.6;
-    const lfo = ctx.createOscillator(); lfo.frequency.value=0.08;
-    const lfoGain = ctx.createGain(); lfoGain.gain.value=0.25;
-    lfo.connect(lfoGain); lfoGain.connect(waveGain.gain); lfo.start();
-    src.connect(filter); filter.connect(waveGain); waveGain.connect(softener); src.start();
-    nodes.push(src, filter, lfo, lfoGain, waveGain);
-  } else if(type==='custom'){
+  if(type==='custom'){
     const src = ctx.createBufferSource(); src.buffer = customAmbientBuffer; src.loop = true;
-    src.connect(softener); src.start(); nodes.push(src);
+    src.connect(limiter); src.start(); nodes.push(src);
   }
   ambientNodes = nodes;
 }
@@ -860,7 +811,18 @@ function loadBasicPage(){
   const nb = data.basicNotebooks[basicActiveSubject];
   document.getElementById('basicSubjectName').value = nb.name;
   document.getElementById('basicPageNum').value = basicActivePage;
-  document.getElementById('basicNote').innerHTML = nb.pages[basicActivePage] || '';
+  const page = getBasicPage(nb, basicActivePage);
+  document.getElementById('basicNote').innerHTML = page.html || '';
+  renderNoteImageLayer();
+}
+// Normalizes whatever shape a page currently is (old plain string, old HTML
+// string, or the current {html, images} object) into the current shape.
+function getBasicPage(nb, pageNum){
+  let page = nb.pages[pageNum];
+  if(typeof page === 'string'){ page = { html: page, images: [] }; nb.pages[pageNum] = page; }
+  if(!page){ page = { html:'', images:[] }; nb.pages[pageNum] = page; }
+  if(!Array.isArray(page.images)) page.images = [];
+  return page;
 }
 function renderBasicNotebooks(){
   renderSubjectTabs('basicSubjectTabs', data.basicNotebooks, basicActiveSubject, (i)=>{
@@ -874,20 +836,20 @@ document.getElementById('basicSubjectName').addEventListener('input', (e)=>{
   scheduleSave();
 });
 document.getElementById('basicNote').addEventListener('input', (e)=>{
-  data.basicNotebooks[basicActiveSubject].pages[basicActivePage] = e.target.innerHTML;
+  getBasicPage(data.basicNotebooks[basicActiveSubject], basicActivePage).html = e.target.innerHTML;
   scheduleSave();
 });
 document.getElementById('basicNote').addEventListener('blur', (e)=>{ if(e.target.textContent.trim()){ awardXP(3,false); logActivity('notesEdited',1); } });
 
 /* ---- Images/sketches inside notes ----
-   Inserted as a non-editable block (contenteditable="false") so typing
-   near it can't mangle it character by character. The block itself uses
-   the browser's native CSS `resize` handle — no custom drag-resize code
-   needed — and floats left/right so the surrounding text genuinely
-   reflows around it via real CSS, rather than an approximation. The page
-   canvas itself never changes size; only what's inside it does.
-   Downscaled client-side before embedding so a phone photo doesn't bloat
-   the account's storage. */
+   Images live in their own overlay layer — a SIBLING of the contenteditable
+   text, not a child of it. Buttons placed inside a contenteditable region
+   are unreliable in most browsers (the editor's own click/selection
+   handling can swallow them); moving images out entirely fixes that at the
+   root. Drag-to-move and native CSS resize replace the old align buttons.
+   Downscaled client-side before saving so a phone photo doesn't bloat the
+   account's storage. The note page itself never changes size — only what's
+   inside/on top of it does. */
 function downscaleImageFile(file, maxDim){
   return new Promise((resolve, reject)=>{
     const img = new Image();
@@ -902,7 +864,7 @@ function downscaleImageFile(file, maxDim){
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.82));
+        resolve({ src: canvas.toDataURL('image/jpeg', 0.82), width, height });
       };
       img.onerror = reject;
       img.src = reader.result;
@@ -912,41 +874,90 @@ function downscaleImageFile(file, maxDim){
   });
 }
 let noteImgSeq = 0;
-function insertNoteImage(dataUrl){
-  const editor = document.getElementById('basicNote');
-  editor.focus();
-  const id = 'nimg' + (++noteImgSeq) + '_' + Date.now();
-  const html = `<div class="note-img-wrap align-left" contenteditable="false" data-nimg="${id}">
-    <img src="${dataUrl}">
-    <div class="note-img-toolbar">
-      <button type="button" onclick="alignNoteImage('${id}','left')">⇤</button>
-      <button type="button" onclick="alignNoteImage('${id}','right')">⇥</button>
-      <button type="button" onclick="removeNoteImage('${id}')">✕</button>
-    </div>
-  </div>&nbsp;`;
-  document.execCommand('insertHTML', false, html);
-  data.basicNotebooks[basicActiveSubject].pages[basicActivePage] = editor.innerHTML;
+function insertNoteImage(src, naturalWidth, naturalHeight){
+  const layer = document.getElementById('basicNoteImageLayer');
+  const layerW = layer.clientWidth || 400, layerH = layer.clientHeight || 460;
+  let w = Math.min(220, layerW - 24), h = Math.round(w * (naturalHeight/naturalWidth || 0.75));
+  if(h > layerH - 24){ h = layerH - 24; w = Math.round(h * (naturalWidth/naturalHeight || 1.3)); }
+  const page = getBasicPage(data.basicNotebooks[basicActiveSubject], basicActivePage);
+  page.images.push({ id:'nimg'+(++noteImgSeq)+'_'+Date.now(), src, x:16, y:16, width:w, height:h });
+  renderNoteImageLayer();
   scheduleSave();
 }
-function alignNoteImage(id, side){
-  const el = document.querySelector(`.note-img-wrap[data-nimg="${id}"]`);
-  if(!el) return;
-  el.classList.toggle('align-left', side==='left');
-  el.classList.toggle('align-right', side==='right');
-  data.basicNotebooks[basicActiveSubject].pages[basicActivePage] = document.getElementById('basicNote').innerHTML;
-  scheduleSave();
+function renderNoteImageLayer(){
+  const layer = document.getElementById('basicNoteImageLayer');
+  const page = getBasicPage(data.basicNotebooks[basicActiveSubject], basicActivePage);
+  layer.innerHTML = '';
+  page.images.forEach(img=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'note-img-wrap';
+    wrap.dataset.nimg = img.id;
+    wrap.style.left = img.x+'px'; wrap.style.top = img.y+'px';
+    wrap.style.width = img.width+'px'; wrap.style.height = img.height+'px';
+    wrap.innerHTML = `<img src="${img.src}" draggable="false">`;
+    const del = document.createElement('button');
+    del.className = 'note-img-remove'; del.type = 'button'; del.textContent = '×';
+    del.title = 'Remove image';
+    // stopPropagation so clicking delete doesn't also start a drag
+    del.addEventListener('pointerdown', e=>e.stopPropagation());
+    del.addEventListener('click', (e)=>{ e.stopPropagation(); removeNoteImage(img.id); });
+    wrap.appendChild(del);
+    wrap.addEventListener('pointerdown', (e)=>startNoteImgDrag(e, wrap, img));
+    layer.appendChild(wrap);
+  });
 }
 function removeNoteImage(id){
-  const el = document.querySelector(`.note-img-wrap[data-nimg="${id}"]`);
-  if(el) el.remove();
-  data.basicNotebooks[basicActiveSubject].pages[basicActivePage] = document.getElementById('basicNote').innerHTML;
+  const page = getBasicPage(data.basicNotebooks[basicActiveSubject], basicActivePage);
+  page.images = page.images.filter(im=>im.id!==id);
+  renderNoteImageLayer();
   scheduleSave();
 }
-// the native CSS `resize` handle fires no DOM event, so poll-save on
-// mouseup anywhere in the editor to persist a resize the user just made
-document.getElementById('basicNote').addEventListener('mouseup', ()=>{
-  data.basicNotebooks[basicActiveSubject].pages[basicActivePage] = document.getElementById('basicNote').innerHTML;
-  scheduleSave();
+let noteImgDrag = null;
+function startNoteImgDrag(e, wrap, img){
+  if(e.target.closest('.note-img-remove')) return;
+  e.preventDefault();
+  wrap.classList.add('dragging');
+  const layer = document.getElementById('basicNoteImageLayer');
+  const layerRect = layer.getBoundingClientRect();
+  noteImgDrag = {
+    wrap, img, layer,
+    offX: e.clientX - layerRect.left - img.x,
+    offY: e.clientY - layerRect.top - img.y,
+  };
+  document.addEventListener('pointermove', onNoteImgDrag);
+  document.addEventListener('pointerup', stopNoteImgDrag);
+}
+function onNoteImgDrag(e){
+  if(!noteImgDrag) return;
+  const { wrap, img, layer, offX, offY } = noteImgDrag;
+  const layerRect = layer.getBoundingClientRect();
+  let x = e.clientX - layerRect.left - offX;
+  let y = e.clientY - layerRect.top - offY;
+  x = Math.max(0, Math.min(x, layer.clientWidth - wrap.offsetWidth));
+  y = Math.max(0, Math.min(y, layer.clientHeight - wrap.offsetHeight));
+  wrap.style.left = x+'px'; wrap.style.top = y+'px';
+  img.x = x; img.y = y;
+}
+function stopNoteImgDrag(){
+  if(noteImgDrag){
+    noteImgDrag.wrap.classList.remove('dragging');
+    // also capture any resize the user made via the native corner-drag
+    // handle while we're here — it fires no DOM event of its own
+    noteImgDrag.img.width = noteImgDrag.wrap.offsetWidth;
+    noteImgDrag.img.height = noteImgDrag.wrap.offsetHeight;
+    scheduleSave();
+  }
+  noteImgDrag = null;
+  document.removeEventListener('pointermove', onNoteImgDrag);
+  document.removeEventListener('pointerup', stopNoteImgDrag);
+}
+// a plain resize (no drag) still needs to be caught and saved
+document.getElementById('basicNoteImageLayer').addEventListener('mouseup', (e)=>{
+  const wrap = e.target.closest('.note-img-wrap');
+  if(!wrap || noteImgDrag) return;
+  const page = getBasicPage(data.basicNotebooks[basicActiveSubject], basicActivePage);
+  const img = page.images.find(im=>im.id===wrap.dataset.nimg);
+  if(img){ img.width = wrap.offsetWidth; img.height = wrap.offsetHeight; scheduleSave(); }
 });
 document.getElementById('basicInsertImgBtn').addEventListener('click', ()=>{
   document.getElementById('basicImgFileInput').click();
@@ -956,8 +967,8 @@ document.getElementById('basicImgFileInput').addEventListener('change', async (e
   if(!file) return;
   if(!file.type.startsWith('image/')){ showToast('Please choose an image file.'); e.target.value=''; return; }
   try{
-    const dataUrl = await downscaleImageFile(file, 1000);
-    insertNoteImage(dataUrl);
+    const { src, width, height } = await downscaleImageFile(file, 1000);
+    insertNoteImage(src, width, height);
   }catch(err){ showToast('Could not read that image.'); }
   e.target.value = '';
 });
@@ -2066,7 +2077,7 @@ const navSearchItems = [
   { label:'Add assignment', preview:'Add a new task to your planner', run:()=>navTo('planner',{scrollTo:'taskTitle'}) },
   { label:'Import calendar', preview:'Import assignments from a school .ics file', run:()=>navTo('planner',{scrollTo:'icsFileInput'}) },
   { label:'Timer', preview:'Pomodoro focus timer', run:()=>navTo('timer') },
-  { label:'Ambient sound', preview:'White noise, pink noise, brown noise, rain, ocean waves', run:()=>navTo('timer',{scrollTo:'ambientSelect'}) },
+  { label:'Ambient sound', preview:'Upload your own background sound to play while you focus', run:()=>navTo('timer',{scrollTo:'ambientSelect'}) },
   { label:'Class bell schedule', preview:'Set your periods and bell times', run:()=>navTo('timer',{scrollTo:'bellNowStatus'}) },
   { label:'Notes', preview:'Basic notes, formal notes, Feynman', run:()=>navTo('notes',{subtab:'basic'}) },
   { label:'Basic notes', preview:'Quick freeform notes by subject', run:()=>navTo('notes',{subtab:'basic',scrollTo:'basic'}) },
@@ -2132,8 +2143,8 @@ searchInput.addEventListener('input', ()=>{
 
   // basic notebook page text
   data.basicNotebooks.forEach((nb,i)=>{
-    Object.entries(nb.pages).forEach(([pg, html])=>{
-      const text = stripHtml(html);
+    Object.entries(nb.pages).forEach(([pg, page])=>{
+      const text = stripHtml(typeof page === 'string' ? page : page.html);
       if(text && text.toLowerCase().includes(q))
         results.push({type:'Basic note', label:`${nb.name} · p.${pg}`, preview: text.slice(0,60), action:()=>{
           basicActiveSubject=i; basicActivePage=parseInt(pg); renderBasicNotebooks();

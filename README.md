@@ -112,13 +112,22 @@ apply either way.
 remembered per stack.
 
 **Notes with images** — Basic Notes is now a rich page: insert a photo or
-sketch, drag its bottom-right corner to resize (native browser resize, not a
-custom control), and pick left/right alignment — text genuinely reflows
-around it via real CSS float, it doesn't just sit on top. The page itself
-never grows; only what's inside it does. Images are downscaled client-side
-before saving so a phone photo doesn't bloat storage. Old plain-text notes
-were migrated automatically and still display correctly. (Formal/Cornell
-notes were not changed — this is Basic Notes only, for now.)
+sketch, **drag it anywhere** to reposition, drag its bottom-right corner to
+resize (native browser resize, not a custom control), and remove it with the
+× button. Images live in their own overlay layer, not inside the editable
+text — that's a deliberate fix, not just a design choice: buttons placed
+directly inside a contenteditable region are unreliable across browsers
+(clicks get swallowed by the editor's own selection handling), which is why
+the old align-left/right buttons and the × button didn't reliably work.
+Moving images to a separate layer fixed that at the root. Trade-off worth
+knowing: this dropped the earlier "text guaranteed to never cover the
+image" behavior (that relied on CSS float, which is incompatible with free
+dragging) — text and a dragged-over image can now overlap visually, same as
+most simple note apps. The page itself never grows; only what's inside/on
+top of it does. Images are downscaled client-side before saving so a phone
+photo doesn't bloat storage. Old notes were migrated automatically and still
+display correctly. (Formal/Cornell notes were not changed — this is Basic
+Notes only, for now.)
 
 **Class bell schedule** — now shows an actual visual timeline (a colored bar
 for the whole day, current block highlighted, a moving "now" marker, an
@@ -229,7 +238,7 @@ content reporting with host review; first-login walkthrough.
 - Bell schedule: rebuilt as one unified timeline (period or passing-block,
   each with start/end); passive on-screen status only, never notifications.
 - Timer: real audible chime at each segment end (previously silent).
-- Ambient sound: fixed clipping/harshness, added fade-in, added custom
-  uploaded-audio option.
+- Ambient sound: trimmed to None and Custom (upload your own) only — the
+  built-in synthesized noise/rain/ocean options were removed.
 - Mistake log: working Delete (function was missing), Done/Resolved state,
   correct-retake auto-resolve, no duplicate entries.

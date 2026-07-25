@@ -182,23 +182,24 @@ details summary{cursor:pointer;font-size:.8rem;color:var(--accent);font-weight:5
 }
 .note-page:empty:before{ content:attr(data-placeholder); color:var(--text-dim); }
 .note-page:focus{ outline:none; box-shadow:0 0 0 1px rgba(0,153,255,.55); }
-/* an inserted image sits in its own non-editable block so typing/backspace
-   treats it as one atomic unit instead of mangling it character by character */
+/* Images live in a separate overlay layer on top of the note page — a
+   sibling of the contenteditable region, not a child of it. Buttons placed
+   INSIDE a contenteditable region are unreliable in most browsers (clicks
+   get swallowed by the editor's own selection handling); moving images out
+   entirely fixes that at the root instead of working around it. */
+#basicNoteImageLayer{ position:absolute; inset:0; pointer-events:none; overflow:hidden; border-radius:10px; }
 .note-img-wrap{
-  resize:both; overflow:hidden; width:220px; height:160px; min-width:60px; min-height:50px; max-width:100%;
-  margin:4px 12px 8px 0; border-radius:8px; border:1px solid var(--paper-line); position:relative; cursor:grab;
+  position:absolute; resize:both; overflow:hidden; min-width:60px; min-height:50px;
+  border-radius:8px; border:1px solid var(--paper-line); cursor:grab; pointer-events:auto;
+  box-shadow:0 4px 14px rgba(0,0,0,.35);
 }
-.note-img-wrap.align-left{ float:left; }
-.note-img-wrap.align-right{ float:right; margin:4px 0 8px 12px; }
+.note-img-wrap.dragging{ cursor:grabbing; opacity:.85; }
 .note-img-wrap img{ width:100%; height:100%; object-fit:contain; display:block; background:#000; pointer-events:none; }
-.note-img-toolbar{
-  position:absolute; top:4px; right:4px; display:none; gap:4px; background:rgba(0,0,0,.7); border-radius:6px; padding:3px;
+.note-img-remove{
+  position:absolute; top:-8px; right:-8px; width:22px; height:22px; border-radius:50%;
+  background:var(--red,#ff5577); color:#fff; border:none; font-size:12px; line-height:22px; text-align:center;
+  cursor:pointer; padding:0;
 }
-.note-img-wrap:hover .note-img-toolbar, .note-img-wrap.selected .note-img-toolbar{ display:flex; }
-.note-img-toolbar button{
-  border:none; background:var(--surface2); color:var(--ink); font-size:.65rem; padding:3px 6px; border-radius:4px; cursor:pointer;
-}
-.note-img-toolbar button:hover{ background:var(--accent); color:#fff; }
 .formal-grid{display:grid;grid-template-columns:230px 1fr;grid-template-rows:auto auto;grid-template-areas:"terms notes" "summary summary";gap:14px;}
 .formal-grid textarea{min-height:300px;}
 #formalTerms{grid-area:terms;min-height:300px;}

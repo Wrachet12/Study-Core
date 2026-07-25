@@ -6,7 +6,7 @@
 <title>StudyCore — Plan, Time, Note, Learn</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20">
+<link rel="stylesheet" href="styles.css?v=21">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5483196886768719" crossorigin="anonymous"></script>
 </head>
 <body>
@@ -288,11 +288,6 @@
         <div class="row">
           <div style="flex:2"><select id="ambientSelect">
             <option value="none">None</option>
-            <option value="white">White noise</option>
-            <option value="pink">Pink noise</option>
-            <option value="brown">Brown noise</option>
-            <option value="rain">Rain</option>
-            <option value="ocean">Ocean waves</option>
             <option value="custom">Custom (upload your own)</option>
           </select></div>
           <div style="flex:1"><label>Volume</label><input id="ambientVolume" type="range" min="0" max="100" value="35"></div>
@@ -383,7 +378,10 @@
         <input type="file" id="basicImgFileInput" accept="image/*" style="display:none;">
       </div>
     </div>
-    <div id="basicNote" class="note-page" contenteditable="true" data-placeholder="Write freely here..."></div>
+    <div id="basicNotePageWrap" style="position:relative;">
+      <div id="basicNote" class="note-page" contenteditable="true" data-placeholder="Write freely here..."></div>
+      <div id="basicNoteImageLayer"></div>
+    </div>
   </div>
 
   <div id="formal" class="subpanel card" style="display:none;">
@@ -735,8 +733,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=20"></script>
-<script src="app.js?v=20"></script>
+<script src="config.js?v=21"></script>
+<script src="app.js?v=21"></script>
 <script>
   if(location.hash === '#signup'){ try{ switchAuthTab('signup'); }catch(e){} }
 </script>
