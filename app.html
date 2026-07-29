@@ -10,20 +10,7 @@
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5483196886768719" crossorigin="anonymous"></script>
 </head>
 <body>
-<button onclick="speak('Hello, systems online.')">🎤 Test Voice</button>
 
-<script>
-function speak(text) {
-  fetch('/api/speak', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ text })
-  })
-  .then(r => r.blob())
-  .then(b => new Audio(URL.createObjectURL(b)).play())
-  .catch(err => alert('Error: ' + err));
-}
-</script>
 <!-- AUTH -->
 <div id="authOverlay">
   <div class="auth-card">
