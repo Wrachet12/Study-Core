@@ -6,7 +6,7 @@
 <title>StudyCore — Plan, Time, Note, Learn</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=21">
+<link rel="stylesheet" href="styles.css?v=22">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5483196886768719" crossorigin="anonymous"></script>
 </head>
 <body>
@@ -373,15 +373,8 @@
       <div><label>Size</label>
         <select id="basicSize"><option>14</option><option selected>16</option><option>18</option><option>22</option><option>26</option></select>
       </div>
-      <div><label>Image</label>
-        <button class="btn ghost small" id="basicInsertImgBtn" type="button">Insert image / sketch</button>
-        <input type="file" id="basicImgFileInput" accept="image/*" style="display:none;">
-      </div>
     </div>
-    <div id="basicNotePageWrap" style="position:relative;">
-      <div id="basicNote" class="note-page" contenteditable="true" data-placeholder="Write freely here..."></div>
-      <div id="basicNoteImageLayer"></div>
-    </div>
+    <textarea id="basicNote" placeholder="Write freely here..."></textarea>
   </div>
 
   <div id="formal" class="subpanel card" style="display:none;">
@@ -733,8 +726,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="config.js?v=21"></script>
-<script src="app.js?v=21"></script>
+<script src="config.js?v=22"></script>
+<script src="app.js?v=22"></script>
 <script>
   if(location.hash === '#signup'){ try{ switchAuthTab('signup'); }catch(e){} }
 </script>

@@ -111,23 +111,15 @@ apply either way.
 **Flashcard order** — a Newest first / Oldest first toggle per stack,
 remembered per stack.
 
-**Notes with images** — Basic Notes is now a rich page: insert a photo or
-sketch, **drag it anywhere** to reposition, drag its bottom-right corner to
-resize (native browser resize, not a custom control), and remove it with the
-× button. Images live in their own overlay layer, not inside the editable
-text — that's a deliberate fix, not just a design choice: buttons placed
-directly inside a contenteditable region are unreliable across browsers
-(clicks get swallowed by the editor's own selection handling), which is why
-the old align-left/right buttons and the × button didn't reliably work.
-Moving images to a separate layer fixed that at the root. Trade-off worth
-knowing: this dropped the earlier "text guaranteed to never cover the
-image" behavior (that relied on CSS float, which is incompatible with free
-dragging) — text and a dragged-over image can now overlap visually, same as
-most simple note apps. The page itself never grows; only what's inside/on
-top of it does. Images are downscaled client-side before saving so a phone
-photo doesn't bloat storage. Old notes were migrated automatically and still
-display correctly. (Formal/Cornell notes were not changed — this is Basic
-Notes only, for now.)
+**Notes** — plain text, same as it's always been. An image/sketch-embedding
+feature (insert, drag to move, resize, delete) was built and then removed
+after a few rounds of it not working reliably — a button-inside-
+contenteditable browser quirk kept breaking, and by the time it was fixed
+properly the feature itself was cut. Any notes that got converted into the
+in-between HTML/image format during that testing were automatically
+reverted back to plain, readable text on next login (any embedded image
+data from that testing is dropped — expected, since there's no image
+feature to display it anymore).
 
 **Class bell schedule** — now shows an actual visual timeline (a colored bar
 for the whole day, current block highlighted, a moving "now" marker, an

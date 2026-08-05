@@ -146,30 +146,22 @@ async function loadProfileAndEnter(userId, email){
     data.mindmaps[0].bubbleSeq = profile.app_data.bubbleSeq || 0;
   }
   data.mindmapMigratedV1 = true;
-  // One-time migration: basic notes used to be plain text in a <textarea>;
-  // they're now HTML in a contenteditable page (so images can be embedded).
-  // Escape old content and turn line breaks into <br> so it displays
-  // correctly instead of being misread as markup.
-  if(!data.notesImagesMigratedV1){
-    const esc = s => (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Basic notes briefly went through an HTML/embedded-image page format
+  // (contenteditable, resizable images) that was later removed and reverted
+  // back to plain text. This normalizes any page still left in one of those
+  // in-between shapes — an HTML-escaped string, or a {html, images} object —
+  // back to plain, readable text, dropping any embedded image data (the
+  // feature that stored it no longer exists). Runs once per account.
+  if(!data.notesImagesRevertedV1){
+    const unesc = s => (s||'').replace(/<br\s*\/?>/gi,'\n').replace(/<[^>]*>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
     (data.basicNotebooks||[]).forEach(nb=>{
       Object.keys(nb.pages||{}).forEach(pg=>{
         const v = nb.pages[pg];
-        if(typeof v === 'string') nb.pages[pg] = esc(v).replace(/\n/g,'<br>');
+        if(v && typeof v === 'object') nb.pages[pg] = unesc(v.html);
+        else if(typeof v === 'string' && /<[a-z][\s\S]*>/i.test(v)) nb.pages[pg] = unesc(v);
       });
     });
-    data.notesImagesMigratedV1 = true;
-  }
-  // Second step: pages moved from a plain HTML string to {html, images}, so
-  // resizable/draggable images can be embedded. Wrap whatever's left over.
-  if(!data.notesImagesMigratedV2){
-    (data.basicNotebooks||[]).forEach(nb=>{
-      Object.keys(nb.pages||{}).forEach(pg=>{
-        const v = nb.pages[pg];
-        if(typeof v === 'string') nb.pages[pg] = { html: v, images: [] };
-      });
-    });
-    data.notesImagesMigratedV2 = true;
+    data.notesImagesRevertedV1 = true;
   }
   // BUGFIX (more robust): a flag alone only helps once it's actually saved —
   // if this is the first login since the fix shipped, the flag hasn't hit
@@ -189,7 +181,7 @@ async function loadProfileAndEnter(userId, email){
   if(!profile.app_data || !profile.app_data.lifetimeStatsBackfilled){
     const flashcardCount = (data.flashcardStacks||[]).reduce((s,st)=>s+st.cards.length,0);
     const leitnerReviewEstimate = [2,3,4,5].reduce((s,box)=>s+((data.leitner[box]||[]).length*(box-1)),0);
-    const notesEditedEstimate = (data.basicNotebooks||[]).reduce((s,nb)=>s+Object.values(nb.pages).filter(p=>p && (typeof p==='string' ? p.trim() : stripHtml(p.html).trim())).length,0)
+    const notesEditedEstimate = (data.basicNotebooks||[]).reduce((s,nb)=>s+Object.values(nb.pages).filter(p=>p&&p.trim()).length,0)
       + (data.formalNotebooks||[]).reduce((s,nb)=>s+Object.values(nb.pages).filter(p=>p&&(p.terms||p.notes||p.summary)).length,0);
     const tasksCompletedEstimate = (data.tasks||[]).reduce((s,t)=>s+(t.doneDays?t.doneDays.length:0),0);
     const testsCompletedEstimate = (data.questionLog?.practiceTests||[]).length;
@@ -280,11 +272,6 @@ const ENCOURAGE = [
   "Your brain just got a little stronger.",
   "Locked in. That's how it's done."
 ];
-function stripHtml(html){
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html || '';
-  return tmp.textContent || '';
-}
 function showToast(msg){
   const el = document.createElement('div');
   el.className='toast';
@@ -811,18 +798,7 @@ function loadBasicPage(){
   const nb = data.basicNotebooks[basicActiveSubject];
   document.getElementById('basicSubjectName').value = nb.name;
   document.getElementById('basicPageNum').value = basicActivePage;
-  const page = getBasicPage(nb, basicActivePage);
-  document.getElementById('basicNote').innerHTML = page.html || '';
-  renderNoteImageLayer();
-}
-// Normalizes whatever shape a page currently is (old plain string, old HTML
-// string, or the current {html, images} object) into the current shape.
-function getBasicPage(nb, pageNum){
-  let page = nb.pages[pageNum];
-  if(typeof page === 'string'){ page = { html: page, images: [] }; nb.pages[pageNum] = page; }
-  if(!page){ page = { html:'', images:[] }; nb.pages[pageNum] = page; }
-  if(!Array.isArray(page.images)) page.images = [];
-  return page;
+  document.getElementById('basicNote').value = nb.pages[basicActivePage] || '';
 }
 function renderBasicNotebooks(){
   renderSubjectTabs('basicSubjectTabs', data.basicNotebooks, basicActiveSubject, (i)=>{
@@ -836,142 +812,10 @@ document.getElementById('basicSubjectName').addEventListener('input', (e)=>{
   scheduleSave();
 });
 document.getElementById('basicNote').addEventListener('input', (e)=>{
-  getBasicPage(data.basicNotebooks[basicActiveSubject], basicActivePage).html = e.target.innerHTML;
+  data.basicNotebooks[basicActiveSubject].pages[basicActivePage] = e.target.value;
   scheduleSave();
 });
-document.getElementById('basicNote').addEventListener('blur', (e)=>{ if(e.target.textContent.trim()){ awardXP(3,false); logActivity('notesEdited',1); } });
-
-/* ---- Images/sketches inside notes ----
-   Images live in their own overlay layer — a SIBLING of the contenteditable
-   text, not a child of it. Buttons placed inside a contenteditable region
-   are unreliable in most browsers (the editor's own click/selection
-   handling can swallow them); moving images out entirely fixes that at the
-   root. Drag-to-move and native CSS resize replace the old align buttons.
-   Downscaled client-side before saving so a phone photo doesn't bloat the
-   account's storage. The note page itself never changes size — only what's
-   inside/on top of it does. */
-function downscaleImageFile(file, maxDim){
-  return new Promise((resolve, reject)=>{
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = ()=>{
-      img.onload = ()=>{
-        let { width, height } = img;
-        if(width > maxDim || height > maxDim){
-          const scale = maxDim / Math.max(width, height);
-          width = Math.round(width*scale); height = Math.round(height*scale);
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width; canvas.height = height;
-        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        resolve({ src: canvas.toDataURL('image/jpeg', 0.82), width, height });
-      };
-      img.onerror = reject;
-      img.src = reader.result;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-let noteImgSeq = 0;
-function insertNoteImage(src, naturalWidth, naturalHeight){
-  const layer = document.getElementById('basicNoteImageLayer');
-  const layerW = layer.clientWidth || 400, layerH = layer.clientHeight || 460;
-  let w = Math.min(220, layerW - 24), h = Math.round(w * (naturalHeight/naturalWidth || 0.75));
-  if(h > layerH - 24){ h = layerH - 24; w = Math.round(h * (naturalWidth/naturalHeight || 1.3)); }
-  const page = getBasicPage(data.basicNotebooks[basicActiveSubject], basicActivePage);
-  page.images.push({ id:'nimg'+(++noteImgSeq)+'_'+Date.now(), src, x:16, y:16, width:w, height:h });
-  renderNoteImageLayer();
-  scheduleSave();
-}
-function renderNoteImageLayer(){
-  const layer = document.getElementById('basicNoteImageLayer');
-  const page = getBasicPage(data.basicNotebooks[basicActiveSubject], basicActivePage);
-  layer.innerHTML = '';
-  page.images.forEach(img=>{
-    const wrap = document.createElement('div');
-    wrap.className = 'note-img-wrap';
-    wrap.dataset.nimg = img.id;
-    wrap.style.left = img.x+'px'; wrap.style.top = img.y+'px';
-    wrap.style.width = img.width+'px'; wrap.style.height = img.height+'px';
-    wrap.innerHTML = `<img src="${img.src}" draggable="false">`;
-    const del = document.createElement('button');
-    del.className = 'note-img-remove'; del.type = 'button'; del.textContent = '×';
-    del.title = 'Remove image';
-    // stopPropagation so clicking delete doesn't also start a drag
-    del.addEventListener('pointerdown', e=>e.stopPropagation());
-    del.addEventListener('click', (e)=>{ e.stopPropagation(); removeNoteImage(img.id); });
-    wrap.appendChild(del);
-    wrap.addEventListener('pointerdown', (e)=>startNoteImgDrag(e, wrap, img));
-    layer.appendChild(wrap);
-  });
-}
-function removeNoteImage(id){
-  const page = getBasicPage(data.basicNotebooks[basicActiveSubject], basicActivePage);
-  page.images = page.images.filter(im=>im.id!==id);
-  renderNoteImageLayer();
-  scheduleSave();
-}
-let noteImgDrag = null;
-function startNoteImgDrag(e, wrap, img){
-  if(e.target.closest('.note-img-remove')) return;
-  e.preventDefault();
-  wrap.classList.add('dragging');
-  const layer = document.getElementById('basicNoteImageLayer');
-  const layerRect = layer.getBoundingClientRect();
-  noteImgDrag = {
-    wrap, img, layer,
-    offX: e.clientX - layerRect.left - img.x,
-    offY: e.clientY - layerRect.top - img.y,
-  };
-  document.addEventListener('pointermove', onNoteImgDrag);
-  document.addEventListener('pointerup', stopNoteImgDrag);
-}
-function onNoteImgDrag(e){
-  if(!noteImgDrag) return;
-  const { wrap, img, layer, offX, offY } = noteImgDrag;
-  const layerRect = layer.getBoundingClientRect();
-  let x = e.clientX - layerRect.left - offX;
-  let y = e.clientY - layerRect.top - offY;
-  x = Math.max(0, Math.min(x, layer.clientWidth - wrap.offsetWidth));
-  y = Math.max(0, Math.min(y, layer.clientHeight - wrap.offsetHeight));
-  wrap.style.left = x+'px'; wrap.style.top = y+'px';
-  img.x = x; img.y = y;
-}
-function stopNoteImgDrag(){
-  if(noteImgDrag){
-    noteImgDrag.wrap.classList.remove('dragging');
-    // also capture any resize the user made via the native corner-drag
-    // handle while we're here — it fires no DOM event of its own
-    noteImgDrag.img.width = noteImgDrag.wrap.offsetWidth;
-    noteImgDrag.img.height = noteImgDrag.wrap.offsetHeight;
-    scheduleSave();
-  }
-  noteImgDrag = null;
-  document.removeEventListener('pointermove', onNoteImgDrag);
-  document.removeEventListener('pointerup', stopNoteImgDrag);
-}
-// a plain resize (no drag) still needs to be caught and saved
-document.getElementById('basicNoteImageLayer').addEventListener('mouseup', (e)=>{
-  const wrap = e.target.closest('.note-img-wrap');
-  if(!wrap || noteImgDrag) return;
-  const page = getBasicPage(data.basicNotebooks[basicActiveSubject], basicActivePage);
-  const img = page.images.find(im=>im.id===wrap.dataset.nimg);
-  if(img){ img.width = wrap.offsetWidth; img.height = wrap.offsetHeight; scheduleSave(); }
-});
-document.getElementById('basicInsertImgBtn').addEventListener('click', ()=>{
-  document.getElementById('basicImgFileInput').click();
-});
-document.getElementById('basicImgFileInput').addEventListener('change', async (e)=>{
-  const file = e.target.files[0];
-  if(!file) return;
-  if(!file.type.startsWith('image/')){ showToast('Please choose an image file.'); e.target.value=''; return; }
-  try{
-    const { src, width, height } = await downscaleImageFile(file, 1000);
-    insertNoteImage(src, width, height);
-  }catch(err){ showToast('Could not read that image.'); }
-  e.target.value = '';
-});
+document.getElementById('basicNote').addEventListener('blur', (e)=>{ if(e.target.value.trim()){ awardXP(3,false); logActivity('notesEdited',1); } });
 function goBasicPage(n){
   n = Math.max(1, Math.min(MAX_PAGES, n));
   basicActivePage = n;
@@ -2143,8 +1987,7 @@ searchInput.addEventListener('input', ()=>{
 
   // basic notebook page text
   data.basicNotebooks.forEach((nb,i)=>{
-    Object.entries(nb.pages).forEach(([pg, page])=>{
-      const text = stripHtml(typeof page === 'string' ? page : page.html);
+    Object.entries(nb.pages).forEach(([pg, text])=>{
       if(text && text.toLowerCase().includes(q))
         results.push({type:'Basic note', label:`${nb.name} · p.${pg}`, preview: text.slice(0,60), action:()=>{
           basicActiveSubject=i; basicActivePage=parseInt(pg); renderBasicNotebooks();
@@ -2718,7 +2561,7 @@ const ONBOARD_STEPS = [
   { title:'4 · Question Log — practice properly',
     body:"Save questions per subject and term, build them into practice tests, and take them. Anything you miss lands in the Mistake Log so you can write down WHY you missed it — using the Feynman technique (explain it simply enough to expose the gap) is that's the part that actually works.", tab:'qlog' },
   { title:'5 · Notes — words and pictures',
-    body:"Each subject notebook holds up to 300 pages, so you've got real room to spread out. Notes support real images and sketches too — insert one, drag its corner to resize it, and pick a font and size for your writing. Text always wraps around the image instead of covering it.", tab:'notes', subtab:'basic' },
+    body:"Each subject notebook holds up to 300 pages, so you've got real room to spread out. Pick a font and size for your writing from the controls above the page.", tab:'notes', subtab:'basic' },
   { title:'6 · Friends — compete a little',
     body:"There are two leaderboards: Friends (just people you've added) and Global (everyone). Add a friend using their Friend ID — yours is shown right on the Friends tab so you can share it back. You can share a flashcard stack or practice test with a code anyone can type in, or send it directly to a friend you've already added — both work from the same Share button.", tab:'social' },
   { title:'7 · XP, streaks, and achievements',
